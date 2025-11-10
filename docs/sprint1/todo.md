@@ -23,10 +23,10 @@
 
 ### 2. Integrasi Supabase untuk Auth dan DB
 
--   [ ] Create Supabase project at supabase.com
--   [ ] Add Supabase Flutter package: `flutter pub add supabase_flutter`
--   [ ] Configure Supabase client in main.dart with project URL and anon key
--   [ ] Setup basic auth state management with Riverpod
+-   [ ] Create Supabase project at supabase.com (manual - see `docs/setup_supabase.md`)
+-   [x] Add Supabase Flutter package: `flutter pub add supabase_flutter` (added to `pubspec.yaml`)
+-   [x] Configure Supabase client in main.dart with project URL and anon key (loads from `.env`)
+-   [x] Setup basic auth state management with Riverpod (see `lib/providers/auth_provider.dart`)
 
 ### 3. Setup FastAPI Backend dengan Basic Endpoints
 

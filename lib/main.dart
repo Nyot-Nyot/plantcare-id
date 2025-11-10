@@ -1,7 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'services/supabase_client.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Load environment variables from .env (if present). This file should
+  // contain SUPABASE_URL and SUPABASE_ANON_KEY. See docs/setup_supabase.md
+  // for instructions to create a Supabase project and obtain keys.
+  await dotenv.load(fileName: '.env');
+
+  final supabaseUrl = dotenv.env['SUPABASE_URL'];
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+
+  if (supabaseUrl != null && supabaseAnonKey != null) {
+    await SupabaseClientService.init(url: supabaseUrl, anonKey: supabaseAnonKey);
+  } else {
+    // If keys are missing we'll continue without initializing Supabase to
+    // avoid crashing the app. The docs/setup_supabase.md explains how to
+    // create the .env file with the proper values.
+    // ignore: avoid_print
+    print('SUPABASE_URL or SUPABASE_ANON_KEY not found in .env; Supabase not initialized.');
+  }
+
   runApp(const ProviderScope(child: MyApp()));
 }
 
