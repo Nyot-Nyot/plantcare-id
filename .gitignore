@@ -122,3 +122,6 @@ app.*.symbols
 .env
 .env.*.local
 .env.local
+backend/.venv/
+backend/.venv
+backend/venv/
