@@ -34,7 +34,7 @@
 -   [x] Install FastAPI: `pip install fastapi uvicorn` (add `requirements.txt`; see `docs/setup_backend.md` to install locally)
 -   [x] Create main.py with basic FastAPI app
 -   [x] Add endpoint GET /health for basic health check
--   [ ] Run backend locally: `uvicorn main:app --reload` (manual — see `docs/setup_backend.md`)
+-   [x] Run backend locally: `uvicorn main:app --reload` (manual — see `docs/setup_backend.md`)
 
 ### 4. Design System Tokens (Warna, Typography) di Flutter
 
