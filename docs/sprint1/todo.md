@@ -30,11 +30,11 @@
 
 ### 3. Setup FastAPI Backend dengan Basic Endpoints
 
--   [ ] Create backend/ folder with Python virtual env
--   [ ] Install FastAPI: `pip install fastapi uvicorn`
--   [ ] Create main.py with basic FastAPI app
--   [ ] Add endpoint GET /health for basic health check
--   [ ] Run backend locally: `uvicorn main:app --reload`
+-   [x] Create backend/ folder with Python virtual env skeleton (added `backend/main.py`, `backend/requirements.txt`)
+-   [x] Install FastAPI: `pip install fastapi uvicorn` (add `requirements.txt`; see `docs/setup_backend.md` to install locally)
+-   [x] Create main.py with basic FastAPI app
+-   [x] Add endpoint GET /health for basic health check
+-   [ ] Run backend locally: `uvicorn main:app --reload` (manual — see `docs/setup_backend.md`)
 
 ### 4. Design System Tokens (Warna, Typography) di Flutter
 
