@@ -37,14 +37,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final repo = ref.read(authRepositoryProvider);
     try {
       await repo.signUp(_emailController.text.trim(), _passwordController.text);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
       final msg = e is Exception ? e.toString() : 'Registration failed';
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(msg)));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

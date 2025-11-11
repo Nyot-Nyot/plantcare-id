@@ -27,8 +27,9 @@ class AuthScreen extends ConsumerWidget {
                 // on Supabase to avoid polluting the backend with transient
                 // guest accounts.
                 ref.read(guestModeProvider.notifier).state = true;
-                if (context.mounted)
+                if (context.mounted) {
                   Navigator.of(context).pushReplacementNamed('/home');
+                }
               },
               child: const Text('Continue as Guest (local)'),
             ),
