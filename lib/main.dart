@@ -24,8 +24,19 @@ Future<void> main() async {
     );
   }
 
-  final supabaseUrl = dotenv.env['SUPABASE_URL'];
-  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+  String? supabaseUrl;
+  String? supabaseAnonKey;
+
+  // Accessing `dotenv.env` will throw if the package wasn't initialized
+  // (for example if `dotenv.load` failed). Guard that to avoid crashing
+  // the app at startup.
+  try {
+    supabaseUrl = dotenv.env['SUPABASE_URL'];
+    supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+  } catch (e) {
+    // ignore: avoid_print
+    print('dotenv not initialized or error while reading .env: $e');
+  }
 
   if (supabaseUrl != null && supabaseAnonKey != null) {
     await SupabaseClientService.init(
