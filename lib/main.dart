@@ -2,16 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'screens/auth/auth_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/supabase_client.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment variables from .env (if present). This file should
-  // contain SUPABASE_URL and SUPABASE_ANON_KEY. See docs/setup_supabase.md
-  // for instructions to create a Supabase project and obtain keys.
-  await dotenv.load(fileName: '.env');
+  // Try to load environment variables from .env. This file should
+  // contain SUPABASE_URL and SUPABASE_ANON_KEY. If the file is missing
+  // we catch the error and continue so the app can run in dev without
+  // crashing. See docs/setup_supabase.md for instructions to create a
+  // Supabase project and obtain keys.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    // ignore: avoid_print
+    print(
+      'No .env file found, continuing without it. Create one from .env.example if you need Supabase integration.',
+    );
+  }
 
   final supabaseUrl = dotenv.env['SUPABASE_URL'];
   final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
@@ -43,7 +54,11 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: AppTheme.lightTheme,
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const SplashScreen(),
+      routes: {
+        '/auth': (ctx) => const AuthScreen(),
+        '/home': (ctx) => const MyHomePage(title: 'Flutter Demo Home Page'),
+      },
     );
   }
 }

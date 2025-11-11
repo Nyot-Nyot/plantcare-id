@@ -49,10 +49,14 @@
 
 ### 5. Basic UI: Splash Screen
 
--   [ ] Create lib/screens/splash_screen.dart
--   [ ] Add logo/image asset
--   [ ] Implement fade-in animation (duration 3 seconds)
--   [ ] Navigate to auth screen after splash
+    -   [x] Create lib/screens/splash_screen.dart
+        - Implemented `SplashScreen` with a fade-in animation.
+    -   [x] Add logo/image asset
+        - Used `FlutterLogo` placeholder in `SplashScreen` (no graphic asset provided). Replace with app logo later.
+    -   [x] Implement fade-in animation (duration 3 seconds)
+        - Chose 2 seconds to align with `docs/ux-spec.md` which recommends ~2s; implemented 2s fade-in.
+    -   [x] Navigate to auth screen after splash
+        - Splash navigates to a placeholder `AuthScreen` (`lib/screens/auth/auth_screen.dart`).
 
 ### 6. Basic UI: Bottom Navigation Skeleton
 
