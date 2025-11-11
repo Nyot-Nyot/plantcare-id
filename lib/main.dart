@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'screens/auth/auth_screen.dart';
+import 'screens/main_tabbed_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/supabase_client.dart';
 import 'theme/app_theme.dart';
@@ -85,7 +86,7 @@ class MyApp extends StatelessWidget {
       home: const SplashScreen(),
       routes: {
         '/auth': (ctx) => const AuthScreen(),
-        '/home': (ctx) => const MyHomePage(title: 'Flutter Demo Home Page'),
+        '/home': (ctx) => const MainTabbedScreen(),
       },
     );
   }

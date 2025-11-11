@@ -49,20 +49,22 @@
 
 ### 5. Basic UI: Splash Screen
 
-    -   [x] Create lib/screens/splash_screen.dart
-        - Implemented `SplashScreen` with a fade-in animation.
-    -   [x] Add logo/image asset
-        - Used `FlutterLogo` placeholder in `SplashScreen` (no graphic asset provided). Replace with app logo later.
-    -   [x] Implement fade-in animation (duration 3 seconds)
-        - Chose 2 seconds to align with `docs/ux-spec.md` which recommends ~2s; implemented 2s fade-in.
-    -   [x] Navigate to auth screen after splash
-        - Splash navigates to a placeholder `AuthScreen` (`lib/screens/auth/auth_screen.dart`).
+-   [x] Create lib/screens/splash_screen.dart
+    -   Implemented `SplashScreen` with a fade-in animation.
+-   [x] Add logo/image asset
+    -   Used `FlutterLogo` placeholder in `SplashScreen` (no graphic asset provided). Replace with app logo later.
+-   [x] Implement fade-in animation (duration 3 seconds)
+    -   Chose 2 seconds to align with `docs/ux-spec.md` which recommends ~2s; implemented 2s fade-in.
+-   [x] Navigate to auth screen after splash
+    -   Splash navigates to a placeholder `AuthScreen` (`lib/screens/auth/auth_screen.dart`).
 
 ### 6. Basic UI: Bottom Navigation Skeleton
 
--   [ ] Create lib/widgets/bottom_nav.dart with 5 tabs: Home, Identify, Collection, Profile
--   [ ] Setup navigation with PageView or IndexedStack
--   [ ] Placeholder screens for each tab
+-   [x] Create `lib/widgets/bottom_nav.dart` with 4 tabs: Home, Identify, Collection, Profile
+-   [x] Setup navigation with `IndexedStack` (state preserved between tabs)
+-   [x] Placeholder screens for each tab (created under `lib/screens/tabs/`)
+    -   files: `home_tab.dart`, `identify_tab.dart`, `collection_tab.dart`, `profile_tab.dart`
+    -   Each placeholder uses the app `Theme` and `AppColors` tokens so visuals are consistent with `docs/ux-spec.md` and `lib/theme`
 
 ### 7. Implementasi Login/Register/Guest Mode (Supabase Auth)
 
