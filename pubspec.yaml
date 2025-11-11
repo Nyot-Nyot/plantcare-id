@@ -63,6 +63,7 @@ flutter:
     # Include .env in app assets so flutter_dotenv can load it at runtime
     assets:
         - .env
+        - assets/Hero.webp
 
     # To add assets to your application, add an assets section, like this:
     # assets:
