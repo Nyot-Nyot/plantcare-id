@@ -75,9 +75,13 @@
 
 ### 8. Welcome Screen dan Home Dashboard
 
--   [ ] Create lib/screens/home_screen.dart with tiles for main features
--   [ ] Add welcome message for new users
--   [ ] Basic dashboard layout with placeholders
+-   [x] Create lib/screens/home_screen.dart with tiles for main features
+-   [x] Add welcome message for new users
+-   [x] Basic dashboard layout with placeholders
+
+**Notes:** Implemented `HomeScreen` and `DashboardTile`.
+The `home_tab.dart` now delegates to `HomeScreen` so `/home` (the main tab) shows the dashboard.
+Welcome message uses `authUserProvider` and falls back to Guest when `guestModeProvider` is active.
 
 ### 9. Profile Screen Skeleton
 

@@ -69,6 +69,22 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
   }
 
+  Future<void> _enterGuestMode() async {
+    // Move guest-mode activation into its own method so we can keep the
+    // mounted checks close to the async boundary and avoid using the
+    // BuildContext across async gaps.
+    final repo = ref.read(authRepositoryProvider);
+    try {
+      await repo.signOut();
+    } catch (_) {
+      // ignore sign out errors for guest flow
+    }
+    if (!mounted) return;
+    ref.read(guestModeProvider.notifier).state = true;
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed('/home');
+  }
+
   @override
   Widget build(BuildContext context) {
     final green = AppColors.primary;
@@ -312,15 +328,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         ),
                         const SizedBox(height: 12),
                         GestureDetector(
-                          onTap: () {
-                            // Enable local-only guest mode
-                            ref.read(guestModeProvider.notifier).state = true;
-                            if (mounted) {
-                              Navigator.of(
-                                context,
-                              ).pushReplacementNamed('/home');
-                            }
-                          },
+                          onTap: () => _enterGuestMode(),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8.0),
                             child: Text(

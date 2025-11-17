@@ -25,4 +25,8 @@ class AppColors {
   static const onSecondary = Color(0xFF17202A);
   static const onBackground = Color(0xFF17202A);
   static const onSurface = Color(0xFF17202A);
+
+  // Additional tokens used by small components
+  static const surfaceBorder = Color(0xFFECF0F1);
+  static const imageBg = Color(0xFFF2F4F6);
 }
