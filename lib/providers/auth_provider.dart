@@ -96,6 +96,17 @@ class AuthRepository {
     }
   }
 
+  /// Exposed for tests to exercise retry behaviour without invoking the
+  /// networked Supabase client. This simply forwards to the internal
+  /// `_withRetry` helper.
+  Future<T> callWithRetry<T>(
+    Future<T> Function() fn, {
+    int attempts = 2,
+    Duration delay = const Duration(milliseconds: 400),
+  }) {
+    return _withRetry(fn, attempts: attempts, delay: delay);
+  }
+
   Future<void> signIn(String email, String password) async {
     return _withRetry(() async {
       final res = await _client.auth.signInWithPassword(
@@ -151,26 +162,6 @@ class AuthRepository {
     } catch (e) {
       final msg = _extractMessage(e);
       throw AuthException(msg, canRetry: false);
-    }
-  }
-
-  /// Update profile information for the current user.
-  ///
-  /// `username` will be stored inside the user's metadata under the
-  /// `username` key. `password` will update the user's password.
-  Future<void> updateProfile({String? username, String? password}) async {
-    // Build attributes using the Supabase UserAttributes helper if available.
-    try {
-      // The supabase_flutter package exposes updateUser via auth.updateUser
-      await _client.auth.updateUser(
-        UserAttributes(
-          password: password,
-          data: username != null ? {'username': username} : null,
-        ),
-      );
-    } catch (e) {
-      // Re-throw for caller to handle UI errors
-      rethrow;
     }
   }
 }

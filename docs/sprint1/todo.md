@@ -99,9 +99,15 @@ Notes: Implemented structured `AuthException` in `lib/providers/auth_provider.da
 
 ### 11. Unit Tests untuk Auth Logic
 
--   [ ] Setup test/ folder with flutter_test
--   [ ] Write tests for auth provider (login success/failure)
--   [ ] Run tests: `flutter test`
+-   [x] Setup test/ folder with flutter_test
+
+-   [x] Write tests for auth provider (happy path + transient network failure)
+
+-   [x] Run tests: `flutter test` (all tests passed locally)
+
+Notes: Added `test/auth_repository_test.dart` to exercise the repository's
+retry logic. Tests cover success, single SocketException recovery, and
+repeated SocketException resulting in an `AuthException` with `canRetry`.
 
 ### 12. CI/CD Setup (GitHub Actions untuk Build APK)
 
