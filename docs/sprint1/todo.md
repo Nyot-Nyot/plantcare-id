@@ -111,10 +111,19 @@ repeated SocketException resulting in an `AuthException` with `canRetry`.
 
 ### 12. CI/CD Setup (GitHub Actions untuk Build APK)
 
--   [ ] Create .github/workflows/build.yml
--   [ ] Add steps: checkout, setup Flutter, build APK
--   [ ] Configure for Android build
--   [ ] Test workflow on push to main
+-   [x] Create .github/workflows/build.yml
+    -   [x] Add steps: checkout, setup Flutter, build APK, run analyzer and tests
+    -   [x] Configure for Android build (release APK)
+    -   [x] Upload built APK as workflow artifact
+
+Notes: Added `./github/workflows/build.yml` which runs on pushes/PRs to `main`. The workflow:
+
+-   checks out the code
+-   installs Flutter via subosito/flutter-action
+-   runs `flutter pub get`, `flutter analyze`, `flutter test`
+-   builds a release APK (`flutter build apk --release`) and uploads it as an artifact
+
+Local verification: ran `flutter analyze` and executed the new unit tests locally; tests passed.
 
 ---
 
