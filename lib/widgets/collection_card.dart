@@ -53,7 +53,13 @@ class CollectionCard extends StatelessWidget {
                   : null,
             ),
             child: imageUrl == null
-                ? const Center(child: SizedBox(width: 64, height: 64))
+                ? const Center(
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      size: 48,
+                      color: AppColors.muted,
+                    ),
+                  )
                 : null,
           ),
           Padding(

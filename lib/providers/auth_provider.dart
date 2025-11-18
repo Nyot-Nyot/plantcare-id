@@ -1,5 +1,27 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+// Helper to try to extract a user-friendly message from various exception
+// objects returned by client libraries. We use dynamic access here because
+// Supabase/Gotrue exceptions don't share a common interface in this codebase.
+String _extractMessage(Object e) {
+  try {
+    // AuthException already carries a friendly message
+    if (e is AuthException) return e.message;
+
+    // Try common fields used by some libraries (message, error, description)
+    final dyn = e as dynamic;
+    final candidate =
+        dyn.message ?? dyn.error ?? dyn.errorDescription ?? dyn.description;
+    if (candidate is String && candidate.isNotEmpty) return candidate;
+  } catch (_) {
+    // ignore and fall back to toString()
+  }
+  return e.toString();
+}
 
 /// Local guest mode flag. When true the app treats the session as a local
 /// guest and avoids creating any accounts on Supabase. This is the preferred
@@ -21,20 +43,115 @@ final authUserProvider = StreamProvider<User?>((ref) {
 });
 
 /// Simple helper repository for auth actions.
+/// Represents an auth-level failure that should be shown to the user.
+/// `canRetry` is true for transient/network errors where retry may help.
+class AuthException implements Exception {
+  final String message;
+  final bool canRetry;
+  AuthException(this.message, {this.canRetry = false});
+  @override
+  String toString() => message;
+}
+
 class AuthRepository {
   final SupabaseClient _client;
   AuthRepository(this._client);
 
+  // Internal helper: run an async operation with a simple retry for
+  // transient network errors.
+  Future<T> _withRetry<T>(
+    Future<T> Function() fn, {
+    int attempts = 2,
+    Duration delay = const Duration(milliseconds: 400),
+  }) async {
+    int tries = 0;
+    while (true) {
+      tries += 1;
+      try {
+        return await fn();
+      } on SocketException catch (_) {
+        if (tries >= attempts) {
+          throw AuthException(
+            'Koneksi jaringan bermasalah. Silakan periksa koneksi dan coba lagi.',
+            canRetry: true,
+          );
+        }
+        await Future.delayed(delay);
+        continue;
+      } on TimeoutException catch (_) {
+        if (tries >= attempts) {
+          throw AuthException(
+            'Permintaan memakan waktu terlalu lama. Coba lagi.',
+            canRetry: true,
+          );
+        }
+        await Future.delayed(delay);
+        continue;
+      } catch (e) {
+        // Non-network error: try to surface a cleaner message (if available)
+        // then rethrow as AuthException to simplify UI handling.
+        final msg = _extractMessage(e);
+        throw AuthException(msg, canRetry: false);
+      }
+    }
+  }
+
   Future<void> signIn(String email, String password) async {
-    await _client.auth.signInWithPassword(email: email, password: password);
+    return _withRetry(() async {
+      final res = await _client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      if (res.session == null) {
+        throw AuthException('Gagal masuk. Pastikan email dan password benar.');
+      }
+    });
   }
 
   Future<void> signUp(String email, String password) async {
-    await _client.auth.signUp(email: email, password: password);
+    return _withRetry(() async {
+      final res = await _client.auth.signUp(email: email, password: password);
+      if (res.user == null) {
+        throw AuthException('Pendaftaran gagal. Coba lagi.');
+      }
+    });
   }
 
   Future<void> signOut() async {
-    await _client.auth.signOut();
+    try {
+      await _client.auth.signOut();
+    } catch (e) {
+      // signOut failures are non-fatal for the app flow; surface a friendly
+      // message if possible.
+      final msg = _extractMessage(e);
+      throw AuthException(
+        msg.isNotEmpty ? msg : 'Gagal keluar dari akun. Coba lagi.',
+      );
+    }
+  }
+
+  /// Update profile information for the current user.
+  ///
+  /// `username` will be stored inside the user's metadata under the
+  /// `username` key. `password` will update the user's password.
+  Future<void> updateProfile({String? username, String? password}) async {
+    // Build attributes using the Supabase UserAttributes helper if available.
+    try {
+      await _client.auth.updateUser(
+        UserAttributes(
+          password: password,
+          data: username != null ? {'username': username} : null,
+        ),
+      );
+    } on SocketException catch (_) {
+      throw AuthException(
+        'Koneksi jaringan bermasalah saat memperbarui profil.',
+        canRetry: true,
+      );
+    } catch (e) {
+      final msg = _extractMessage(e);
+      throw AuthException(msg, canRetry: false);
+    }
   }
 
   /// Update profile information for the current user.

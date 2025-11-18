@@ -91,9 +91,11 @@ Welcome message uses `authUserProvider` and falls back to Guest when `guestModeP
 
 ### 10. Error Handling untuk Auth
 
--   [ ] Add try-catch in auth methods
--   [ ] Display error messages (e.g., invalid credentials)
--   [ ] Handle network errors with retry option
+-   [x] Add try-catch in auth methods
+-   [x] Display error messages (e.g., invalid credentials)
+-   [x] Handle network errors with retry option
+
+Notes: Implemented structured `AuthException` in `lib/providers/auth_provider.dart` with user-friendly messages and a small retry helper for transient network errors. Login and Register screens show SnackBar messages and include a "Coba lagi" action when the error is retryable. Updated `lib/screens/auth/auth_screen.dart` and `lib/screens/auth/register_screen.dart` accordingly.
 
 ### 11. Unit Tests untuk Auth Logic
 

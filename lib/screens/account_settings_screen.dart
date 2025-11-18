@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers/auth_provider.dart';
 import '../theme/colors.dart';
@@ -24,6 +25,17 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
     super.initState();
     _usernameController = TextEditingController();
     _passwordController = TextEditingController();
+    // Listen once to authUserProvider and prefill username when it becomes
+    // available. Using ref.listen avoids doing side-effects inside build().
+    ref.listen<AsyncValue<User?>>(authUserProvider, (previous, next) {
+      next.whenData((u) {
+        final m = u?.userMetadata ?? {};
+        final name = m['username'] as String?;
+        if (name != null && _usernameController.text.isEmpty) {
+          _usernameController.text = name;
+        }
+      });
+    });
   }
 
   @override
@@ -56,9 +68,21 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
       _passwordController.clear();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menyimpan: ${e.toString()}')),
-        );
+        var msg = 'Gagal menyimpan data.';
+        try {
+          final dyn = e as dynamic;
+          final candidate =
+              dyn.message ??
+              dyn.error ??
+              dyn.errorDescription ??
+              dyn.description;
+          if (candidate is String && candidate.isNotEmpty) msg = candidate;
+        } catch (_) {
+          // ignore and fall back to generic message
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal menyimpan: $msg')));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -77,15 +101,8 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final asyncUser = ref.watch(authUserProvider);
-    // If user metadata contains username, prefill it.
-    asyncUser.whenData((u) {
-      final m = u?.userMetadata ?? {};
-      final name = m['username'] as String?;
-      if (name != null && _usernameController.text.isEmpty) {
-        _usernameController.text = name;
-      }
-    });
+    // authUserProvider is listened in initState to prefill username; keep
+    // build free from side-effects.
 
     return Scaffold(
       appBar: AppBar(
@@ -182,14 +199,14 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                   OutlinedButton(
                     onPressed: _signOut,
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFFFB2C36)),
+                      side: BorderSide(color: AppColors.danger),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Keluar',
-                      style: TextStyle(color: Color(0xFFFB2C36)),
+                      style: TextStyle(color: AppColors.danger),
                     ),
                   ),
                 ],

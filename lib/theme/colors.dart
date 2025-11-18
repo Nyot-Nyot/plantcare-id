@@ -11,6 +11,8 @@ class AppColors {
   static const secondary = Color(0xFF58D68D);
   static const accent = Color(0xFFF2C94C);
   static const danger = Color(0xFFE74C3C);
+  // Light accent used for subtle icon backgrounds in the profile screen
+  static const accentLight = Color(0xFFFEF5E7);
 
   static const bg = Color(0xFFFFFFFF);
   static const surface = Color(0xFFF6F8F9);

@@ -57,10 +57,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
+      final msg = e is AuthException ? e.message : e.toString();
+      final canRetry = e is AuthException && e.canRetry;
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            action: canRetry
+                ? SnackBarAction(label: 'Coba lagi', onPressed: _signIn)
+                : null,
+          ),
+        );
       }
     } finally {
       if (mounted) {

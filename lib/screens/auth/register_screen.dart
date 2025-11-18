@@ -58,11 +58,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
-      final msg = e is Exception ? e.toString() : 'Registration failed';
+      final msg = e is AuthException
+          ? e.message
+          : (e is Exception ? e.toString() : 'Pendaftaran gagal');
+      final canRetry = e is AuthException && e.canRetry;
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            action: canRetry
+                ? SnackBarAction(label: 'Coba lagi', onPressed: _submit)
+                : null,
+          ),
+        );
       }
     } finally {
       if (mounted) {

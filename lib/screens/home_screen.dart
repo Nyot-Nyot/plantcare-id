@@ -13,7 +13,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncUser = ref.watch(authUserProvider);
-    final isGuest = ref.watch(guestModeProvider);
+    // guest mode is observable from providers when needed elsewhere
 
     // Derive the welcome text declaratively from the provider state so the
     // UI re-renders correctly when authentication state changes.
@@ -29,7 +29,7 @@ class HomeScreen extends ConsumerWidget {
             return 'Halo, ${user.email}';
           }
         }
-        return isGuest ? 'Halo, Tamu! 🌿' : 'Halo, Tamu! 🌿';
+        return 'Halo, Tamu! 🌿';
       },
       loading: () => 'Halo, Tamu! 🌿',
       error: (_, __) => 'Halo, Tamu! 🌿',
