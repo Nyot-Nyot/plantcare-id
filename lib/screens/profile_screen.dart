@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../providers/auth_provider.dart';
 import '../theme/colors.dart';
@@ -16,6 +17,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _reminder = true;
   bool _tips = true;
+  String? _appVersion;
 
   Future<void> _handleSignOut() async {
     final repo = ref.read(authRepositoryProvider);
@@ -26,6 +28,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ref.read(guestModeProvider.notifier).state = false;
     if (!mounted) return;
     Navigator.of(context).pushReplacementNamed('/auth');
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Load app version once so it stays in sync with pubspec.yaml.
+    PackageInfo.fromPlatform()
+        .then((info) {
+          if (!mounted) return;
+          setState(() => _appVersion = '${info.appName} v${info.version}');
+        })
+        .catchError((_) {
+          // ignore - we'll fall back to a sensible default in the UI
+        });
   }
 
   Widget _sectionCard({required String title, required List<Widget> children}) {
@@ -267,7 +283,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFEF5E7),
+                                  color: AppColors.accentLight,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: const Icon(
@@ -419,15 +435,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             onPressed: _handleSignOut,
                             icon: const Icon(
                               Icons.logout_outlined,
-                              color: Color(0xFFFB2C36),
+                              color: AppColors.danger,
                             ),
                             label: const Text(
                               'Keluar',
-                              style: TextStyle(color: Color(0xFFFB2C36)),
+                              style: TextStyle(color: AppColors.danger),
                             ),
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(
-                                color: Color(0xFFFB2C36),
+                              side: BorderSide(
+                                color: AppColors.danger,
                                 width: 1.2,
                               ),
                               shape: RoundedRectangleBorder(
@@ -440,7 +456,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         const SizedBox(height: 20),
                         Center(
                           child: Text(
-                            'Tanam.in v1.0',
+                            _appVersion ?? 'Tanam.in',
                             style: AppTextStyles.body.copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -464,8 +480,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, st) =>
-              Center(child: Text('Terjadi kesalahan: ${e.toString()}')),
+          error: (e, st) => Center(child: Text('Terjadi kesalahan')),
         ),
       ),
     );

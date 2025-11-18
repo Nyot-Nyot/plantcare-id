@@ -4,6 +4,25 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// Helper to try to extract a user-friendly message from various exception
+// objects returned by client libraries. We use dynamic access here because
+// Supabase/Gotrue exceptions don't share a common interface in this codebase.
+String _extractMessage(Object e) {
+  try {
+    // AuthException already carries a friendly message
+    if (e is AuthException) return e.message;
+
+    // Try common fields used by some libraries (message, error, description)
+    final dyn = e as dynamic;
+    final candidate =
+        dyn.message ?? dyn.error ?? dyn.errorDescription ?? dyn.description;
+    if (candidate is String && candidate.isNotEmpty) return candidate;
+  } catch (_) {
+    // ignore and fall back to toString()
+  }
+  return e.toString();
+}
+
 /// Local guest mode flag. When true the app treats the session as a local
 /// guest and avoids creating any accounts on Supabase. This is the preferred
 /// approach for demo/preview mode so we don't pollute the Supabase project
@@ -69,9 +88,9 @@ class AuthRepository {
         await Future.delayed(delay);
         continue;
       } catch (e) {
-        // Non-network error: convert to a user-friendly message and rethrow
-        // as AuthException to simplify UI handling.
-        final msg = e.toString();
+        // Non-network error: try to surface a cleaner message (if available)
+        // then rethrow as AuthException to simplify UI handling.
+        final msg = _extractMessage(e);
         throw AuthException(msg, canRetry: false);
       }
     }
@@ -102,8 +121,12 @@ class AuthRepository {
     try {
       await _client.auth.signOut();
     } catch (e) {
-      // signOut failures are non-fatal for the app flow; surface as AuthException
-      throw AuthException('Gagal keluar dari akun. Coba lagi.');
+      // signOut failures are non-fatal for the app flow; surface a friendly
+      // message if possible.
+      final msg = _extractMessage(e);
+      throw AuthException(
+        msg.isNotEmpty ? msg : 'Gagal keluar dari akun. Coba lagi.',
+      );
     }
   }
 
@@ -126,7 +149,7 @@ class AuthRepository {
         canRetry: true,
       );
     } catch (e) {
-      final msg = e.toString();
+      final msg = _extractMessage(e);
       throw AuthException(msg, canRetry: false);
     }
   }
