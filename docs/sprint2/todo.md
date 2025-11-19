@@ -45,9 +45,7 @@ Acceptance criteria:
 -   User dapat mengambil foto dan memilih dari galeri.
 -   UI menunjukkan overlay tips; ada opsi retake/submit.
 
-### 3. Client — Image validation & compression (2-3h)
-
-[ ] Validasi: ukuran file, dimensions minimal (300px), mime type (image/\*) (0.5h)
+[ ] Validasi: ukuran file, dimensions minimal (800px recommended; prefer >=1024px for best accuracy), mime type (image/\*) (0.5h)
 [ ] Compression pipeline (target <2MB, configurable) + preserve aspect ratio (1-1.5h)
 [ ] UX: tampilkan pesan error yang jelas jika invalid; berikan opsi retry atau pilih foto lain (0.5h)
 
@@ -55,9 +53,7 @@ Acceptance criteria:
 
 -   Gambar dikompresi dan tervalidasi; user tidak bisa submit image invalid.
 
-### 4. Backend — Orchestrator endpoint (FastAPI) (4-6h)
-
-[ ] Tambah endpoint POST `/identify` di `backend/main.py` atau modul orchestrator: - Terima multipart image atau image_url - Return JSON terstruktur (id, common_name, scientific_name, confidence, sources, raw_response)
+[ ] Tambah endpoint POST `/identify` di `backend/main.py` atau modul orchestrator: - Terima multipart image atau image_url - Return JSON terstruktur (id, common_name, scientific_name, confidence, provider, raw_response)
 [ ] Integrasi ke Plant.id API; implement retry/backoff and clear error handling jika Plant.id gagal (2-3h)
 [ ] Cache hasil identifikasi (Redis/in-memory) dengan TTL 24 jam (0.5-1h)
 [ ] Tambah logging, metrics, error handling (0.5-1h)
@@ -65,6 +61,7 @@ Acceptance criteria:
 Acceptance criteria:
 
 -   Endpoint mengembalikan structured JSON; menggunakan Plant.id sebagai sumber tunggal; cached results bekerja; error handling & retry/backoff tersedia.
+-   Response model includes a single `provider` string (e.g. "plant.id") for provenance instead of a `sources` array.
 
 ### 5. Client — API integration & request flow (2-3h)
 
@@ -77,9 +74,9 @@ Acceptance criteria:
 
 -   Upload berhasil memicu result screen; errors ditangani dengan pesan yang jelas.
 
-### 6. Client — Identify Result screen (3-4h)
+[### 6. Client — Identify Result screen (3-4h)
 
-[ ] Buat `IdentifyResultScreen` menampilkan: - Thumbnail image - Common name & scientific name - Confidence score (progress bar + numeric) - Source badge (Plant.id) - Top suggestions (jika available)
+[ ] Buat `IdentifyResultScreen` menampilkan: - Thumbnail image - Common name & scientific name - Confidence score (progress bar + numeric) - Provider badge (Plant.id) - Top suggestions (jika available)
 [ ] Tindakan: Save to collection, View guide (placeholder), Retake (1.5-2h)
 [ ] Jika confidence <70%: tampilkan warning dan action (retake / try gallery) (0.5h)
 
@@ -134,15 +131,17 @@ Acceptance criteria:
 2. Buka Camera screen, beri permission, ambil foto tanaman.
 3. Cek behavior saat foto > limit (seharusnya compress atau reject dengan pesan).
 4. Submit photo — verifikasi loading state, result screen muncul.
-5. Jika Plant.id unavailable, verifikasi bahwa app menampilkan pesan error yang ramah dan opsi retry (tidak ada fallback API).
+5. Jika Plant.id unavailable, verifikasi bahwa app menampilkan pesan error yang ramah dan opsi retry (tidak ada fallback API). Selain itu, verifikasi identifikasi dengan gambar beresolusi direkomendasikan (>=800px; prefer >=1024px) untuk memastikan akurasi.
 6. Save result ke koleksi, restart app, verifikasi entry tersimpan.
 7. Tes offline: matikan koneksi, cek cached result tampil; jika belum ada cache tampilkan message.
 
 ---
 
-## Estimates & notes
+-## Estimates & notes
 
--   Total estimasi sprint: 20-25 SP (sesuai `sprint-planning.md` estimasi 25 SP per sprint). Angka di atas dipecah per tugas; developer dapat meng-breakdown lagi ke ticket/PR per item.
+-   Total estimasi sprint (project-level): 20-25 SP (sesuai `sprint-planning.md` estimasi 25 SP per sprint). Namun, the tasks scoped in this `docs/sprint2/todo.md` (core Plant Identification flow) sum to approximately 34 hours (~4.25 workdays). With the project convention 1 SP = 1 workday, this maps to ~4-5 SP.
+
+-   To avoid confusion: treat the Sprint-level budget as 25 SP total; this todo documents the subset of work for Plant Identification (~5 SP). The remaining SP in the sprint should be reserved for other concurrent tasks (backend wiring, QA, buffer, reviews). Adjust as needed during sprint planning.
 -   Assumsi: Backend minimal orchestration endpoint sudah boleh berada di same repo `backend/`.
 -   Jika integrasi API memerlukan billing/credentials, developer harus menyiapkan sandbox keys atau mock server untuk test.
 
