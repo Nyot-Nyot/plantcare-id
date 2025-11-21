@@ -221,8 +221,11 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
 
   void _retake() {
     if (!mounted) return;
-    setState(() => _pickedFile = null);
-    Future.delayed(const Duration(milliseconds: 200), () => _takePhoto());
+    // Reset to camera preview and let the user re-frame the shot.
+    setState(() {
+      _pickedFile = null;
+      _loading = false;
+    });
   }
 
   void _showMessage(String message) {
