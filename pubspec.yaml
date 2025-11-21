@@ -41,7 +41,10 @@ dependencies:
     package_info_plus: ^4.0.0
     image_picker: ^0.8.7+5
     camera: ^0.11.0
-    flutter_image_compress: ^1.1.0
+    # bump to a 2.x release to pick up Android namespace fix required by
+    # newer Android Gradle Plugin versions (avoids "Namespace not specified"
+    # build errors in CI for flutter_image_compress 1.x).
+    flutter_image_compress: ^2.4.0
     mime: ^1.0.2
 
 dev_dependencies:
