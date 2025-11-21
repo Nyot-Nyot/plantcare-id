@@ -176,6 +176,26 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
     if (size <= _kTargetBytes) return file;
 
     // Try progressively lower quality steps until we meet target or hit floor.
+    // Preserve the original image format when possible. Note: converting
+    // formats (e.g., PNG -> JPEG) may lose transparency; we prefer to keep
+    // the original format so callers that rely on alpha channels are not
+    // surprised.
+    final String? mime = lookupMimeType(file.path);
+    CompressFormat format = CompressFormat.jpeg;
+    String outExt = '.jpg';
+    if (mime != null) {
+      if (mime.contains('png')) {
+        format = CompressFormat.png;
+        outExt = '.png';
+      } else if (mime.contains('webp')) {
+        format = CompressFormat.webp;
+        outExt = '.webp';
+      } else if (mime.contains('jpeg') || mime.contains('jpg')) {
+        format = CompressFormat.jpeg;
+        outExt = '.jpg';
+      }
+    }
+
     int quality = _kInitialCompressQuality;
     Uint8List? compressed;
     while (quality >= _kMinCompressQuality) {
@@ -183,6 +203,7 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
         file.path,
         quality: quality,
         keepExif: true,
+        format: format,
       );
       if (compressed == null) break;
       if (compressed.lengthInBytes <= _kTargetBytes) break;
@@ -195,7 +216,7 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
     }
 
     final tmp = File(
-      '${Directory.systemTemp.path}/plantcare_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      '${Directory.systemTemp.path}/plantcare_${DateTime.now().millisecondsSinceEpoch}$outExt',
     );
     await tmp.writeAsBytes(compressed);
     return XFile(tmp.path);
