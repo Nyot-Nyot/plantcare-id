@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../screens/camera_capture_screen_v2.dart';
+
 /// A small, reusable Bottom Navigation scaffold that uses an IndexedStack
 /// to preserve state between tabs. Tabs and their widget pages are defined
 /// below as defaults; you can also pass custom pages into the constructor.
@@ -46,7 +48,18 @@ class _BottomNavScaffoldState extends State<BottomNavScaffold> {
       body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+        onTap: (i) {
+          // When Identify (index 1) is tapped, open the camera directly
+          // instead of switching to the tab page which would require an
+          // extra "Open Camera" press.
+          if (i == 1) {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CameraCaptureScreenV2()),
+            );
+            return;
+          }
+          setState(() => _currentIndex = i);
+        },
         selectedItemColor: theme.colorScheme.primary,
         // use withAlpha to avoid precision-loss deprecation warnings
         unselectedItemColor: theme.colorScheme.onSurface.withAlpha(153),

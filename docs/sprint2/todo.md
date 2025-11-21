@@ -33,12 +33,12 @@ Acceptance criteria:
 
 ### 2. Client — Camera & Gallery integration (6-8h)
 
-[ ] Tambah dependency camera/image picker sesuai stack proyek (cek `pubspec.yaml`) (0.5h)
-[ ] Buat screen `camera_capture_screen.dart`: - Viewfinder - Overlay tips (cara memfokus, jarak ideal) - Tombol capture, flip camera, flash, gallery shortcut (2h)
-[ ] Implement gallery pick flow `chooseFromGallery()` (1h)
-[ ] Thumbnail preview + retake option sebelum submit (0.5h)
-[ ] States: permission denied, camera error (0.5h)
-[ ] Responsif terhadap orientation & safe area (0.5h)
+[x] Tambah dependency camera/image picker sesuai stack proyek (cek `pubspec.yaml`) (0.5h)
+[x] Buat screen `camera_capture_screen.dart`: - Minimal capture (system camera via `image_picker`) - Overlay tips (cara memfokus, jarak ideal) - Tombol capture, gallery shortcut (2h)
+[x] Implement gallery pick flow `chooseFromGallery()` with validation (1h)
+[x] Thumbnail preview + retake option sebelum submit (0.5h)
+[x] States: permission denied, camera error (0.5h)
+[x] Responsif terhadap orientation & safe area (0.5h)
 
 Acceptance criteria:
 

@@ -7,11 +7,17 @@ import 'screens/auth/auth_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/main_tabbed_screen.dart';
 import 'screens/splash_screen.dart';
+import 'services/camera_service.dart';
 import 'services/supabase_client.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Prefetch camera list early to avoid platform-channel initialization
+  // races that can cause the 'ProcessCameraProvider.getInstance' error
+  // seen on some Android devices when availableCameras() is called later.
+  await CameraService.init();
 
   // Try to load environment variables from .env. This file should
   // contain SUPABASE_URL and SUPABASE_ANON_KEY. If the file is missing
