@@ -83,19 +83,19 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
   }
 
   Future<void> _toggleFlash() async {
+    // Determine the new flash mode once and reuse it. This keeps the
+    // toggle logic consistent whether or not a camera controller exists.
+    final newMode = _flashMode == FlashMode.off
+        ? FlashMode.torch
+        : FlashMode.off;
+
     if (_cameraController == null) {
-      // No controller yet; toggle the desired flash mode locally.
-      setState(
-        () => _flashMode = _flashMode == FlashMode.off
-            ? FlashMode.torch
-            : FlashMode.off,
-      );
+      // No controller yet; just update the desired flash mode locally.
+      setState(() => _flashMode = newMode);
       return;
     }
+
     try {
-      final newMode = _flashMode == FlashMode.off
-          ? FlashMode.torch
-          : FlashMode.off;
       await _cameraController!.setFlashMode(newMode);
       if (!mounted) return;
       setState(() => _flashMode = newMode);
