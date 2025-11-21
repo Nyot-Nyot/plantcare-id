@@ -152,16 +152,33 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
         orElse: () => current,
       );
       if (other.name == current.name) return;
+
+      // Show loading indicator while switching cameras.
+      // Mark camera as uninitialized so UI shows the "Memulai kamera..." state.
+      setState(() {
+        _cameraInitialized = false;
+        _loading = true;
+      });
+
+      // Dispose the old controller, but keep the reference until we replace it
       await _cameraController!.dispose();
+
+      // Create and initialize new controller
       _cameraController = CameraController(
         other,
         ResolutionPreset.high,
         enableAudio: false,
       );
       await _cameraController!.initialize();
+
       if (!mounted) return;
-      setState(() {});
+      setState(() {
+        _cameraInitialized = true;
+        _loading = false;
+      });
     } catch (e) {
+      // Reset loading state on error and surface message
+      if (mounted) setState(() => _loading = false);
       _showMessage('Gagal mengganti kamera: $e');
     }
   }
