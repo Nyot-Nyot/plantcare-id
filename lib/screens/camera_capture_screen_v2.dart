@@ -66,37 +66,20 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
     if (!mounted) return;
     // If camera preview is available, capture using in-app camera controller.
     if (_cameraController != null && _cameraInitialized) {
-      try {
-        setState(() => _loading = true);
-        final XFile file = await _cameraController!.takePicture();
-        final ok = await _validateImage(file);
-        if (ok && mounted) setState(() => _pickedFile = file);
-      } catch (e) {
-        _showMessage('Gagal mengambil foto: $e');
-      } finally {
-        if (mounted) setState(() => _loading = false);
-      }
+      // Use shared helper to handle loading, validation and state update.
+      await _withPickedFile(
+        () async => await _cameraController!.takePicture(),
+        cancelMessage: 'Kamera dibatalkan',
+      );
       return;
     }
 
     // Fallback: open native camera once if controller isn't available.
-    setState(() => _loading = true);
-    try {
-      final XFile? file = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 90,
-      );
-      if (file == null) {
-        _showMessage('Kamera dibatalkan');
-        return;
-      }
-      final ok = await _validateImage(file);
-      if (ok && mounted) setState(() => _pickedFile = file);
-    } catch (e) {
-      _showMessage('Gagal mengambil foto: $e');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    await _withPickedFile(
+      () async =>
+          await _picker.pickImage(source: ImageSource.camera, imageQuality: 90),
+      cancelMessage: 'Kamera dibatalkan',
+    );
   }
 
   Future<void> _toggleFlash() async {
@@ -123,14 +106,27 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
 
   Future<void> _chooseFromGallery() async {
     if (!mounted) return;
-    setState(() => _loading = true);
-    try {
-      final XFile? file = await _picker.pickImage(
+    await _withPickedFile(
+      () async => await _picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 90,
-      );
+      ),
+      cancelMessage: 'Pemilihan galeri dibatalkan',
+    );
+  }
+
+  /// Shared helper to handle picked/captured files: shows loading, validates image and
+  /// sets `_pickedFile` when valid. `picker` should return an `XFile?` or null when cancelled.
+  Future<void> _withPickedFile(
+    Future<XFile?> Function() picker, {
+    String? cancelMessage,
+  }) async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    try {
+      final XFile? file = await picker();
       if (file == null) {
-        _showMessage('Pemilihan galeri dibatalkan');
+        if (cancelMessage != null) _showMessage(cancelMessage);
         return;
       }
       final ok = await _validateImage(file);
