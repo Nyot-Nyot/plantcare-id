@@ -12,6 +12,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi import Request
 from fastapi.responses import JSONResponse
+try:
+    import redis.asyncio as aioredis  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    aioredis = None
 
 load_dotenv()
 
@@ -55,6 +59,9 @@ class SimpleCache:
 # if REDIS_URL is provided we will attempt to use redis.asyncio; otherwise use
 # the SimpleCache above.
 cache = SimpleCache()
+
+# Placeholder for a cache backend that may be swapped to Redis at startup
+# `cache` will point to either a SimpleCache or RedisCache instance.
 
 # Basic in-memory metrics
 app.state.metrics = {"requests": 0, "successes": 0, "failures": 0}
@@ -122,6 +129,51 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
                         # Don't retry on client errors
                         raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {e}")
     raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {last_exc}")
+
+
+class RedisCache:
+    """Simple Redis-backed cache wrapper storing JSON-serialized values.
+
+    Uses `SET key value EX ttl` and `GET key` semantics. Values are JSON.
+    """
+
+    def __init__(self, redis_client, default_ttl: int = 24 * 3600):
+        self._r = redis_client
+        self._ttl = default_ttl
+
+    async def get(self, key: str) -> Optional[Any]:
+        v = await self._r.get(key)
+        if v is None:
+            return None
+        try:
+            # redis returns bytes
+            if isinstance(v, bytes):
+                v = v.decode("utf-8")
+            return json.loads(v)
+        except Exception:
+            return None
+
+    async def set(self, key: str, value: Any, ttl: int | None = None):
+        ttl_val = ttl or self._ttl
+        await self._r.set(key, json.dumps(value), ex=ttl_val)
+
+
+@app.on_event("startup")
+async def _maybe_init_redis_cache():
+    global cache
+    if not REDIS_URL:
+        return
+    if aioredis is None:
+        logger.warning("REDIS_URL is set but redis.asyncio is not available; using SimpleCache")
+        return
+    try:
+        r = aioredis.from_url(REDIS_URL)
+        # quick ping to ensure reachable
+        await r.ping()
+        cache = RedisCache(r)
+        logger.info("Using Redis cache at %s", REDIS_URL)
+    except Exception as e:
+        logger.warning("Failed to initialize Redis at %s: %s. Falling back to SimpleCache", REDIS_URL, e)
 
 
 @app.get("/health")
