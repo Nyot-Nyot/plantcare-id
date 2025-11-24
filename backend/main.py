@@ -64,6 +64,23 @@ def _make_cache_key_for_bytes(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+async def _process_and_cache(cache_key: str, payload: dict) -> dict:
+    """Check cache by key, call Plant.id with payload, normalize and cache result.
+
+    Returns the normalized result (may be from cache).
+    """
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        app.state.metrics["successes"] += 1
+        return cached
+
+    resp = await _call_plant_id(payload)
+    normalized = _normalize_plant_id_response(resp)
+    await cache.set(cache_key, normalized)
+    app.state.metrics["successes"] += 1
+    return normalized
+
+
 async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
     if PLANT_ID_AUTH_MODE != "body" and PLANT_ID_API_KEY:
@@ -129,20 +146,11 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
             if not content:
                 raise HTTPException(status_code=400, detail="Empty file uploaded")
             cache_key = _make_cache_key_for_bytes(content)
-            cached = await cache.get(cache_key)
-            if cached is not None:
-                app.state.metrics["successes"] += 1
-                return JSONResponse(content=cached)
 
             # Prepare base64 payload for plant.id (body-based API)
             b64 = base64.b64encode(content).decode("ascii")
             payload = {"images": [b64]}
-            # Call plant.id
-            resp = await _call_plant_id(payload)
-            # Minimal normalization: take top suggestion if present
-            normalized = _normalize_plant_id_response(resp)
-            await cache.set(cache_key, normalized)
-            app.state.metrics["successes"] += 1
+            normalized = await _process_and_cache(cache_key, payload)
             return JSONResponse(content=normalized)
 
         # Otherwise expect JSON body with image_url
@@ -151,16 +159,8 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
         if not image_url:
             raise HTTPException(status_code=400, detail="Provide `image` file or `image_url` in JSON body")
         cache_key = hashlib.sha256(image_url.encode("utf-8")).hexdigest()
-        cached = await cache.get(cache_key)
-        if cached is not None:
-            app.state.metrics["successes"] += 1
-            return JSONResponse(content=cached)
-
         payload = {"image_url": image_url}
-        resp = await _call_plant_id(payload)
-        normalized = _normalize_plant_id_response(resp)
-        await cache.set(cache_key, normalized)
-        app.state.metrics["successes"] += 1
+        normalized = await _process_and_cache(cache_key, payload)
         return JSONResponse(content=normalized)
 
     except HTTPException:
