@@ -78,20 +78,34 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     last_exc: Optional[Exception] = None
     async with httpx.AsyncClient(timeout=timeout) as client:
         while attempt < 4:
-            try:
-                if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
-                    payload_with_key = {**payload, "api_key": PLANT_ID_API_KEY}
-                    r = await client.post(PLANT_ID_URL, json=payload_with_key, headers=headers)
-                else:
-                    r = await client.post(PLANT_ID_URL, json=payload, headers=headers)
-                r.raise_for_status()
-                return r.json()
-            except Exception as e:
-                last_exc = e
-                attempt += 1
-                logger.warning("Plant.id request failed (attempt %d): %s", attempt, e)
-                await asyncio.sleep(backoff)
-                backoff *= 2
+                    try:
+                        if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
+                            payload_with_key = {**payload, "api_key": PLANT_ID_API_KEY}
+                            r = await client.post(PLANT_ID_URL, json=payload_with_key, headers=headers)
+                        else:
+                            r = await client.post(PLANT_ID_URL, json=payload, headers=headers)
+                        # raise_for_status will raise HTTPStatusError for 4xx/5xx
+                        r.raise_for_status()
+                        return r.json()
+                    except httpx.RequestError as e:
+                        # Network-level errors (timeouts, connection errors, DNS, etc.)
+                        last_exc = e
+                        attempt += 1
+                        logger.warning("Plant.id request failed (attempt %d): %s", attempt, e)
+                        await asyncio.sleep(backoff)
+                        backoff *= 2
+                    except httpx.HTTPStatusError as e:
+                        # For HTTP errors, retry on 5xx, but surface 4xx immediately
+                        status = e.response.status_code if e.response is not None else None
+                        if status and 500 <= status < 600:
+                            last_exc = e
+                            attempt += 1
+                            logger.warning("Plant.id returned %d (attempt %d): %s", status, attempt, e)
+                            await asyncio.sleep(backoff)
+                            backoff *= 2
+                            continue
+                        # Don't retry on client errors
+                        raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {e}")
     raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {last_exc}")
 
 
