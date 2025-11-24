@@ -243,8 +243,9 @@ def _normalize_plant_id_response(resp: dict) -> dict:
             })
     except Exception:
         # If normalization fails, we still return raw_response so callers can
-        # inspect it.
-        pass
+        # inspect it. Log the exception for debugging upstream response
+        # format issues without surfacing an internal error to the caller.
+        logger.warning("Failed to normalize Plant.id response", exc_info=True)
     return out
 
 
