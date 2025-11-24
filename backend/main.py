@@ -70,14 +70,15 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
     if PLANT_ID_AUTH_MODE != "body" and PLANT_ID_API_KEY:
         headers["Authorization"] = f"Bearer {PLANT_ID_API_KEY}"
-
-    # Simple retry/backoff
+    # Simple retry/backoff. Create a single AsyncClient so connection pooling
+    # and keep-alive work across retry attempts instead of recreating the
+    # client on each loop iteration.
     attempt = 0
     backoff = 0.5
     last_exc: Optional[Exception] = None
-    while attempt < 4:
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        while attempt < 4:
+            try:
                 if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
                     payload_with_key = {**payload, "api_key": PLANT_ID_API_KEY}
                     r = await client.post(PLANT_ID_URL, json=payload_with_key, headers=headers)
@@ -85,12 +86,12 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
                     r = await client.post(PLANT_ID_URL, json=payload, headers=headers)
                 r.raise_for_status()
                 return r.json()
-        except Exception as e:
-            last_exc = e
-            attempt += 1
-            logger.warning("Plant.id request failed (attempt %d): %s", attempt, e)
-            await asyncio.sleep(backoff)
-            backoff *= 2
+            except Exception as e:
+                last_exc = e
+                attempt += 1
+                logger.warning("Plant.id request failed (attempt %d): %s", attempt, e)
+                await asyncio.sleep(backoff)
+                backoff *= 2
     raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {last_exc}")
 
 
