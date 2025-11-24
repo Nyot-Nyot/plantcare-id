@@ -42,10 +42,8 @@ class SimpleCache:
             return None
         expiry, val = v
         if time.time() > expiry:
-            try:
-                del self._store[key]
-            except KeyError:
-                pass
+            # Remove expired entry if present in a single atomic call.
+            self._store.pop(key, None)
             return None
         return val
 
