@@ -57,10 +57,10 @@ Acceptance criteria:
 
 ### 4. Backend — Orchestrator endpoint for Plant.id (4-6h)
 
-[ ] Tambah endpoint POST `/identify` di `backend/main.py` atau modul orchestrator: - Terima multipart image atau image_url - Return JSON terstruktur (id, common_name, scientific_name, confidence, provider, raw_response)
-[ ] Integrasi ke Plant.id API; implement retry/backoff and clear error handling jika Plant.id gagal (2-3h)
-[ ] Cache hasil identifikasi (Redis/in-memory) dengan TTL 24 jam (0.5-1h)
-[ ] Tambah logging, metrics, error handling (0.5-1h)
+[x] Tambah endpoint POST `/identify` di `backend/main.py` atau modul orchestrator: - Terima multipart image atau image_url - Return JSON terstruktur (id, common_name, scientific_name, confidence, provider, raw_response)
+[x] Integrasi ke Plant.id API; implement retry/backoff and clear error handling jika Plant.id gagal (2-3h)
+[x] Cache hasil identifikasi (Redis/in-memory) dengan TTL 24 jam (0.5-1h)
+[x] Tambah logging, metrics, error handling (0.5-1h)
 
 Acceptance criteria:
 
