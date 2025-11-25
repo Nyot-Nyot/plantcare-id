@@ -27,15 +27,17 @@ class IdentifyResult {
     final c = json['confidence'];
     if (c is num) conf = c.toDouble();
 
+    String? commonName;
+    final rawCommon = json['common_name'];
+    if (rawCommon is String) {
+      commonName = rawCommon;
+    } else if (rawCommon is List && rawCommon.isNotEmpty) {
+      commonName = rawCommon.first.toString();
+    }
+
     return IdentifyResult(
       id: json['id']?.toString(),
-      commonName: json['common_name'] is String
-          ? json['common_name']
-          : (json['common_name'] is List
-                ? ((json['common_name'] as List).isNotEmpty
-                      ? (json['common_name'] as List).first.toString()
-                      : null)
-                : null),
+      commonName: commonName,
       scientificName: json['scientific_name']?.toString(),
       confidence: conf,
       provider: json['provider']?.toString() ?? 'unknown',
