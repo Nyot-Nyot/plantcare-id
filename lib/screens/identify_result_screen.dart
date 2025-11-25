@@ -2,22 +2,26 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/identify_result.dart';
+import '../providers/collection_provider.dart';
 import '../theme/colors.dart';
 
-class IdentifyResultScreen extends StatefulWidget {
+class IdentifyResultScreen extends ConsumerStatefulWidget {
   final IdentifyResult result;
   final File? imageFile;
 
   const IdentifyResultScreen({super.key, required this.result, this.imageFile});
 
   @override
-  State<IdentifyResultScreen> createState() => _IdentifyResultScreenState();
+  ConsumerState<IdentifyResultScreen> createState() =>
+      _IdentifyResultScreenState();
 }
 
-class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
+class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
   bool _expanded = false;
+  bool _isSaving = false;
 
   bool? _isHealthy() {
     final h = widget.result.healthAssessment;
@@ -52,6 +56,53 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
     }
 
     return out;
+  }
+
+  /// Save identification result to collection
+  Future<void> _saveToCollection() async {
+    if (widget.imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tidak ada gambar untuk disimpan')),
+      );
+      return;
+    }
+
+    if (_isSaving) return; // Prevent double-tap
+
+    setState(() => _isSaving = true);
+
+    try {
+      final collectionNotifier = ref.read(collectionProvider.notifier);
+
+      await collectionNotifier.saveFromIdentification(
+        result: widget.result,
+        imageFile: widget.imageFile!,
+        customName: widget.result.commonName,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ Berhasil disimpan ke koleksi'),
+            backgroundColor: AppColors.primary,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menyimpan: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   void _showCitationDialog(BuildContext context, String citation) {
@@ -626,15 +677,22 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Simpan ke Koleksi (stub)'),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.bookmark_border),
-                        label: const Text('Simpan ke Koleksi'),
+                        onPressed: _isSaving ? null : _saveToCollection,
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                ),
+                              )
+                            : const Icon(Icons.bookmark_border),
+                        label: Text(
+                          _isSaving ? 'Menyimpan...' : 'Simpan ke Koleksi',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),

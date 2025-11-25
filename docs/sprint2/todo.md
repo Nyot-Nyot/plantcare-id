@@ -90,9 +90,9 @@ Acceptance criteria:
 
 ### 7. Client — Save to Collection (local) (2-3h)
 
-[ ] Implement local model & storage (pakai existing local DB layer — Hive/Drift) untuk menyimpan hasil identifikasi (1h)
-[ ] UI action save: konfirmasi dan toast; record menyimpan image thumbnail + metadata (1h)
-[ ] Sync stub: buat function `syncCollection()` yang akan dipanggil saat online (0.5h)
+[x] Implement local model & storage (pakai existing local DB layer — Hive/Drift) untuk menyimpan hasil identifikasi (1h)
+[x] UI action save: konfirmasi dan toast; record menyimpan image thumbnail + metadata (1h)
+[x] Sync stub: buat function `syncCollection()` yang akan dipanggil saat online (0.5h)
 
 Acceptance criteria:
 
