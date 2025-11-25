@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/identify_result.dart';
+import '../theme/colors.dart';
 
 class IdentifyResultScreen extends StatefulWidget {
   final IdentifyResult result;
@@ -89,8 +90,8 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: AppColors.bg,
+        foregroundColor: AppColors.textPrimary,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -108,12 +109,12 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                 child: widget.imageFile != null
                     ? Image.file(widget.imageFile!, fit: BoxFit.cover)
                     : Container(
-                        color: Colors.grey.shade100,
+                        color: AppColors.imageBg,
                         child: const Center(
                           child: Icon(
                             Icons.image_not_supported,
                             size: 64,
-                            color: Colors.grey,
+                            color: AppColors.muted,
                           ),
                         ),
                       ),
@@ -130,8 +131,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                         children: [
                           Text(
                             widget.result.commonName ?? '—',
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(color: const Color(0xFF2C3E50)),
+                            style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -139,7 +139,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
                                   fontStyle: FontStyle.italic,
-                                  color: const Color(0xFF5D6D7E),
+                                  color: AppColors.textSecondary,
                                 ),
                           ),
                         ],
@@ -151,7 +151,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF27AE60),
+                        color: AppColors.primary,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text(
@@ -175,12 +175,10 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: healthOk
-                        ? const Color(0xFFE8F8F5)
-                        : const Color(0xFFFDEEEE),
+                        ? AppColors.surfaceSuccess
+                        : AppColors.surfaceError,
                     border: Border.all(
-                      color: healthOk
-                          ? const Color(0xFF27AE60)
-                          : Colors.redAccent,
+                      color: healthOk ? AppColors.primary : AppColors.danger,
                     ),
                     borderRadius: BorderRadius.circular(24),
                   ),
@@ -191,8 +189,8 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                         width: 48,
                         decoration: BoxDecoration(
                           color: healthOk
-                              ? const Color(0xFF27AE60)
-                              : Colors.redAccent,
+                              ? AppColors.primary
+                              : AppColors.danger,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
@@ -217,7 +215,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                                   ? 'Tidak ada tanda penyakit terdeteksi. Lanjutkan perawatan rutin!'
                                   : 'Beberapa gejala penyakit terdeteksi. Periksa detail untuk rekomendasi.',
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: const Color(0xFF5D6D7E)),
+                                  ?.copyWith(color: AppColors.textSecondary),
                             ),
                           ],
                         ),
@@ -234,9 +232,9 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Perawatan Umum',
-                      style: TextStyle(fontSize: 16, color: Color(0xFF2C3E50)),
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 12),
                     Column(
@@ -251,7 +249,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                           'Pencahayaan',
                           care['Cahaya'],
                           Icons.wb_sunny,
-                          const Color(0xFFF2C94C),
+                          AppColors.accent,
                         ),
                       ],
                     ),
@@ -272,10 +270,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                                   widget.result.care!.isNotEmpty))
                           ? 'Informasi Detail'
                           : 'Cara Menanam & Merawat',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Color(0xFF2C3E50),
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     Builder(
@@ -285,7 +280,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                           return Text(
                             'Tidak ada deskripsi tersedia.',
                             style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: const Color(0xFF5D6D7E)),
+                                ?.copyWith(color: AppColors.textSecondary),
                           );
                         }
                         // Truncate based on screen height so "Baca Selengkapnya" is meaningful
@@ -299,7 +294,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                               Text(
                                 full,
                                 style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(color: const Color(0xFF5D6D7E)),
+                                    ?.copyWith(color: AppColors.textSecondary),
                               ),
                               const SizedBox(height: 8),
                               if (full.length > charsLimit)
@@ -309,7 +304,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                                   child: Text(
                                     _expanded ? 'Tutup' : 'Baca Selengkapnya',
                                     style: const TextStyle(
-                                      color: Color(0xFF27AE60),
+                                      color: AppColors.primary,
                                     ),
                                   ),
                                 ),
@@ -323,14 +318,14 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                             Text(
                               '$short...',
                               style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: const Color(0xFF5D6D7E)),
+                                  ?.copyWith(color: AppColors.textSecondary),
                             ),
                             const SizedBox(height: 8),
                             TextButton(
                               onPressed: () => setState(() => _expanded = true),
                               child: const Text(
                                 'Baca Selengkapnya',
-                                style: TextStyle(color: Color(0xFF27AE60)),
+                                style: TextStyle(color: AppColors.primary),
                               ),
                             ),
                           ],
@@ -353,7 +348,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF27AE60),
+                          backgroundColor: AppColors.primary,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -381,10 +376,10 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                           ),
                         ),
                         onPressed: () {},
-                        icon: const Icon(Icons.share, color: Color(0xFF27AE60)),
+                        icon: const Icon(Icons.share, color: AppColors.primary),
                         label: const Text(
                           'Bagikan',
-                          style: TextStyle(color: Color(0xFF27AE60)),
+                          style: TextStyle(color: AppColors.primary),
                         ),
                       ),
                     ),
@@ -412,9 +407,9 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.bg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: AppColors.surfaceBorder),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -439,21 +434,12 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Color(0xFF2C3E50),
-                  ),
-                ),
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Text(
                   text,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF5D6D7E),
-                    height: 1.5,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 if (citation != null && citation.trim().isNotEmpty) ...[
@@ -472,14 +458,14 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                           const Icon(
                             Icons.link,
                             size: 14,
-                            color: Color(0xFF27AE60),
+                            color: AppColors.primary,
                           ),
                           const SizedBox(width: 6),
                           const Text(
                             'Lihat Sumber',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Color(0xFF27AE60),
+                              color: AppColors.primary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

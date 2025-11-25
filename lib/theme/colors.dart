@@ -20,6 +20,7 @@ class AppColors {
 
   // Text colors
   static const textPrimary = Color(0xFF17202A);
+  static const textTitle = Color(0xFF2C3E50); // Used for headings
   static const textSecondary = Color(0xFF5D6D7E);
 
   // On-* colors
@@ -30,5 +31,7 @@ class AppColors {
 
   // Additional tokens used by small components
   static const surfaceBorder = Color(0xFFECF0F1);
+  static const surfaceSuccess = Color(0xFFE8F8F5);
+  static const surfaceError = Color(0xFFFDEEEE);
   static const imageBg = Color(0xFFF2F4F6);
 }
