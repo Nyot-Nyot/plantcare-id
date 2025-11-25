@@ -138,8 +138,11 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
     final health = widget.result.healthAssessment;
     if (health == null) return const SizedBox.shrink();
 
-    final diseases = health['diseases'] as List<dynamic>?;
-    if (diseases == null || diseases.isEmpty) return const SizedBox.shrink();
+    final diseasesRaw = health['diseases'];
+    if (diseasesRaw is! List || diseasesRaw.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final diseases = diseasesRaw;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
