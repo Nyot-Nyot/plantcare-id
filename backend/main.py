@@ -417,13 +417,6 @@ def _extract_health_assessment(resp: dict) -> Optional[dict]:
     if isinstance(disease_obj, dict):
         suggestions = disease_obj.get("suggestions")
         if isinstance(suggestions, list):
-            logger.info(f"DEBUG: Found {len(suggestions)} disease suggestions")
-            for idx, d in enumerate(suggestions):
-                similar_imgs = d.get("similar_images", [])
-                logger.info(f"DEBUG: Disease {idx} ({d.get('name')}): {len(similar_imgs)} similar_images")
-                if similar_imgs:
-                    logger.info(f"DEBUG: First image keys: {similar_imgs[0].keys() if similar_imgs else 'N/A'}")
-
             health["diseases"] = [
                 {
                     "name": d.get("name"),
