@@ -46,6 +46,8 @@ dependencies:
     # build errors in CI for flutter_image_compress 1.x).
     flutter_image_compress: ^2.4.0
     mime: ^1.0.2
+    http: ^0.13.6
+    geolocator: ^9.0.2
 
 dev_dependencies:
     flutter_test:

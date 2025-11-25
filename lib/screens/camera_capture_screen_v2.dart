@@ -6,10 +6,13 @@ import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 
 import '../services/camera_service.dart';
+import '../services/identify_service.dart';
+import 'identify_result_screen.dart';
 
 /// Full-screen camera capture screen (v2).
 class CameraCaptureScreenV2 extends StatefulWidget {
@@ -730,19 +733,118 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
                 label: const Text('Retake'),
               ),
               ElevatedButton.icon(
-                onPressed: () {
-                  // Preserve temp files since the caller will receive the
-                  // selected file and is responsible for storing/cleaning it.
-                  _preserveTempOnPop = true;
-                  Navigator.of(context).pop(_pickedFile);
-                },
+                onPressed: _loading
+                    ? null
+                    : () => _submitPickedFile(File(_pickedFile!.path)),
                 icon: const Icon(Icons.check),
                 label: const Text('Use'),
               ),
             ],
           ),
         ),
+        if (_loading)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black54,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _cancelUpload,
+                      icon: const Icon(Icons.cancel),
+                      label: const Text('Cancel'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
+  }
+
+  UploadTask? _currentUploadTask;
+
+  void _cancelUpload() {
+    try {
+      _currentUploadTask?.cancel();
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _submitPickedFile(File file) async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    final svc = IdentifyService();
+    // Attempt to capture current device location. If unavailable or denied,
+    // we proceed without location (server will still accept the image).
+    double? lat;
+    double? lon;
+    try {
+      final pos = await _getCurrentLocation();
+      if (pos != null) {
+        lat = pos.latitude;
+        lon = pos.longitude;
+      }
+    } catch (_) {
+      // Ignore location errors and continue without coordinates.
+    }
+
+    _currentUploadTask = svc.uploadImage(file, latitude: lat, longitude: lon);
+    try {
+      final result = await _currentUploadTask!.future;
+      if (!mounted) return;
+      // preserve temp file since user used it
+      _preserveTempOnPop = true;
+      // Navigate to result screen
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => IdentifyResultScreen(result: result, imageFile: file),
+        ),
+      );
+      // After returning from result screen, close camera screen as user likely completed flow
+      if (mounted) Navigator.of(context).maybePop();
+    } catch (e) {
+      String msg = 'Upload / identify gagal';
+      if (e is StateError) {
+        msg = e.message;
+      } else if (e is HttpException) {
+        msg = e.message;
+      } else if (e is SocketException) {
+        msg =
+            'Network error: ${e.message}. Pastikan backend berjalan dan ORCHESTRATOR_URL benar (emulator: 10.0.2.2).';
+      } else {
+        msg = 'Upload / identify gagal: $e';
+      }
+      _showMessage(msg);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _currentUploadTask = null;
+        });
+      }
+    }
+  }
+
+  Future<Position?> _getCurrentLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return null;
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return null;
+      }
+      if (permission == LocationPermission.deniedForever) return null;
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+    } catch (e) {
+      return null;
+    }
   }
 }

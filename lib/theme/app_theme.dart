@@ -29,6 +29,16 @@ class AppTheme {
       headlineLarge: AppTextStyles.h1,
       headlineMedium: AppTextStyles.h2,
       headlineSmall: AppTextStyles.h3,
+      titleLarge: TextStyle(
+        color: AppColors.textTitle,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+      ),
+      titleMedium: TextStyle(
+        color: AppColors.textTitle,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+      ),
       bodyLarge: AppTextStyles.body,
       bodyMedium: AppTextStyles.body,
       // caption is deprecated on newer SDKs; use labelSmall for small captions.

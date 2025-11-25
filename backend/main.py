@@ -20,9 +20,17 @@ except Exception:  # pragma: no cover - optional dependency
 load_dotenv()
 
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
-PLANT_ID_URL = os.getenv("PLANT_ID_URL", "https://api.plant.id/v3/identify")
-# Authentication mode: 'body' (api_key in JSON body) or 'header' (Authorization: Bearer)
+PLANT_ID_URL = os.getenv("PLANT_ID_URL", "https://plant.id/api/v3/identification")
+# Authentication mode: 'body' (api_key in JSON body) or 'header' (Api-Key header)
 PLANT_ID_AUTH_MODE = os.getenv("PLANT_ID_AUTH_MODE", "body")
+# Comma-separated list of details to request from Plant.id to enrich responses.
+# See docs: https://plant.id/api/v3/openapi.yaml for available detail names.
+# Default includes common names, more complete descriptions, watering and light info
+PLANT_ID_DETAILS = os.getenv(
+    "PLANT_ID_DETAILS",
+    "common_names,description_all,watering,best_watering,best_light_condition,propagation_methods",
+)
+PLANT_ID_LANGUAGE = os.getenv("PLANT_ID_LANGUAGE", "id")
 REDIS_URL = os.getenv("REDIS_URL")
 
 logger = logging.getLogger("orchestrator")
@@ -90,8 +98,10 @@ async def _process_and_cache(cache_key: str, payload: dict) -> dict:
 
 async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
+    # Use Api-Key header by default when not operating in `body` auth mode.
+    # Plant.id docs expect the API key in the `Api-Key` header.
     if PLANT_ID_AUTH_MODE != "body" and PLANT_ID_API_KEY:
-        headers["Authorization"] = f"Bearer {PLANT_ID_API_KEY}"
+        headers["Api-Key"] = PLANT_ID_API_KEY
     # Simple retry/backoff. Create a single AsyncClient so connection pooling
     # and keep-alive work across retry attempts instead of recreating the
     # client on each loop iteration.
@@ -101,11 +111,17 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     async with httpx.AsyncClient(timeout=timeout) as client:
         while attempt < 4:
                     try:
+                        # Include api key in body if configured, otherwise rely on header.
+                        final_payload = payload
                         if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
-                            payload_with_key = {**payload, "api_key": PLANT_ID_API_KEY}
-                            r = await client.post(PLANT_ID_URL, json=payload_with_key, headers=headers)
-                        else:
-                            r = await client.post(PLANT_ID_URL, json=payload, headers=headers)
+                            final_payload = {**payload, "api_key": PLANT_ID_API_KEY}
+
+                        r = await client.post(
+                            PLANT_ID_URL,
+                            params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
+                            json=final_payload,
+                            headers=headers,
+                        )
                         # raise_for_status will raise HTTPStatusError for 4xx/5xx
                         r.raise_for_status()
                         return r.json()
@@ -113,7 +129,10 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
                         # Network-level errors (timeouts, connection errors, DNS, etc.)
                         last_exc = e
                         attempt += 1
-                        logger.warning("Plant.id request failed (attempt %d): %s", attempt, e)
+                        # Use repr(e) so the logged message includes the exception type
+                        # and any internal message for easier debugging (was empty
+                        # previously in some cases).
+                        logger.warning("Plant.id request failed (attempt %d): %r", attempt, e)
                         await asyncio.sleep(backoff)
                         backoff *= 2
                     except httpx.HTTPStatusError as e:
@@ -122,7 +141,7 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
                         if status and 500 <= status < 600:
                             last_exc = e
                             attempt += 1
-                            logger.warning("Plant.id returned %d (attempt %d): %s", status, attempt, e)
+                            logger.warning("Plant.id returned %d (attempt %d): %r", status, attempt, e)
                             await asyncio.sleep(backoff)
                             backoff *= 2
                             continue
@@ -194,6 +213,12 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
     # Prefer multipart file if provided
     try:
         if image is not None:
+            # If the client sent additional form fields (latitude/longitude)
+            # they are available via request.form(). We read them and include
+            # them in the payload forwarded to Plant.id when present.
+            form = await request.form()
+            lat = form.get('latitude')
+            lon = form.get('longitude')
             content = await image.read()
             if not content:
                 raise HTTPException(status_code=400, detail="Empty file uploaded")
@@ -201,7 +226,18 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
 
             # Prepare base64 payload for plant.id (body-based API)
             b64 = base64.b64encode(content).decode("ascii")
-            payload = {"images": [b64]}
+            payload: dict = {"images": [b64]}
+            # include optional coordinates when provided
+            try:
+                if lat is not None:
+                    payload['latitude'] = float(str(lat))
+            except (ValueError, TypeError):
+                pass
+            try:
+                if lon is not None:
+                    payload['longitude'] = float(str(lon))
+            except (ValueError, TypeError):
+                pass
             normalized = await _process_and_cache(cache_key, payload)
             return JSONResponse(content=normalized)
 
@@ -224,6 +260,152 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _extract_detail_text_and_citation(v: Any) -> Dict[str, Optional[str]]:
+    """Helper to extract text and citation from various Plant.id detail formats."""
+    if v is None:
+        return {"text": None, "citation": None}
+    if isinstance(v, str):
+        return {"text": v, "citation": None}
+    if isinstance(v, list):
+        return {"text": ", ".join(str(e) for e in v), "citation": None}
+    if isinstance(v, dict):
+        text = v.get("value") or v.get("text") or v.get("description")
+        citation = v.get("citation")
+        if text:
+            return {"text": str(text), "citation": str(citation) if citation else None}
+        return {"text": None, "citation": str(citation) if citation else None}
+    return {"text": str(v), "citation": None}
+
+
+def _extract_suggestions(resp: dict) -> list:
+    """Extract suggestions list from response."""
+    suggestions = []
+    if isinstance(resp, dict):
+        result_obj = resp.get("result") or {}
+        if isinstance(result_obj, dict):
+            classification = result_obj.get("classification")
+            if isinstance(classification, dict):
+                s = classification.get("suggestions")
+                if isinstance(s, list):
+                    suggestions = s
+        # fallback: top-level suggestions may exist
+        if not suggestions:
+            s2 = resp.get("suggestions")
+            if isinstance(s2, list):
+                suggestions = s2
+    return suggestions
+
+
+def _extract_common_name(top: dict) -> Optional[str]:
+    """Extract common name from top suggestion."""
+    common = None
+    if top.get("plant_name"):
+        common = top.get("plant_name")
+    elif top.get("common_names"):
+        cn = top.get("common_names")
+        if isinstance(cn, list) and len(cn) > 0:
+            common = str(cn[0])
+        else:
+            common = str(cn)
+
+    if not common:
+        details = top.get("details") or {}
+        if isinstance(details, dict) and details.get("common_names"):
+            cn2 = details.get("common_names")
+            if isinstance(cn2, list) and len(cn2) > 0:
+                common = str(cn2[0])
+            else:
+                common = str(cn2)
+    return common
+
+
+def _extract_confidence(top: dict, resp: dict) -> Optional[float]:
+    """Extract confidence/probability."""
+    conf = None
+    for k in ("probability", "prob", "confidence"):
+        v = top.get(k)
+        if isinstance(v, (int, float)):
+            conf = float(v)
+            break
+
+    if conf is None and isinstance(resp.get("result"), dict):
+        maybe = resp["result"].get("classification")
+        if isinstance(maybe, dict):
+            first = maybe.get("suggestions")
+            if isinstance(first, list) and len(first) > 0 and isinstance(first[0], dict):
+                for k in ("probability", "prob", "confidence"):
+                    v = first[0].get(k)
+                    if isinstance(v, (int, float)):
+                        conf = float(v)
+                        break
+    return conf
+
+
+def _extract_care_info(details: dict) -> dict:
+    """Extract care information (watering, light)."""
+    care = {}
+
+    # Watering
+    watering_raw = details.get("watering")
+    best_watering = _extract_detail_text_and_citation(details.get("best_watering"))
+    watering_text = None
+    watering_citation = best_watering["citation"]
+
+    # 1. Try structured watering (Indonesian friendly)
+    if isinstance(watering_raw, dict):
+        min_val = watering_raw.get("min")
+        max_val = watering_raw.get("max")
+        if min_val is not None or max_val is not None:
+            if min_val is not None and max_val is not None:
+                watering_text = f"Kelembaban ideal: {min_val} — {max_val}"
+            elif min_val is not None:
+                watering_text = f"Kelembaban minimal: {min_val}"
+            else:
+                watering_text = f"Kelembaban hingga: {max_val}"
+
+            if watering_raw.get("citation"):
+                watering_citation = str(watering_raw.get("citation"))
+
+    # 2. Fallback to English text
+    if not watering_text and best_watering["text"]:
+        watering_text = best_watering["text"].strip()
+        watering_citation = best_watering["citation"]
+
+    if watering_text:
+        care["watering"] = {"text": watering_text, "citation": watering_citation}
+
+    # Light
+    light_raw = details.get("best_light_condition") or details.get("best_light")
+    light_info = _extract_detail_text_and_citation(light_raw)
+    if light_info["text"]:
+        care["light"] = {"text": light_info["text"].strip(), "citation": light_info["citation"]}
+
+    return care
+
+
+def _extract_health_assessment(resp: dict) -> dict:
+    """Extract health assessment."""
+    health = {"is_healthy": True, "probability": 1.0, "diseases": []}
+    result_obj = resp.get("result")
+    if isinstance(result_obj, dict):
+        is_healthy_obj = result_obj.get("is_healthy")
+        if isinstance(is_healthy_obj, dict):
+            prob = is_healthy_obj.get("probability")
+            if isinstance(prob, (int, float)):
+                health["probability"] = float(prob)
+                health["is_healthy"] = float(prob) >= 0.5
+
+        disease_obj = result_obj.get("disease")
+        if isinstance(disease_obj, dict):
+            suggestions = disease_obj.get("suggestions")
+            if isinstance(suggestions, list):
+                health["diseases"] = [
+                    {"name": d.get("name"), "probability": d.get("probability")}
+                    for d in suggestions if isinstance(d, dict)
+                ]
+    return health
+
+
 def _normalize_plant_id_response(resp: dict) -> dict:
     """Normalize plant.id response to our minimal schema.
 
@@ -232,14 +414,31 @@ def _normalize_plant_id_response(resp: dict) -> dict:
     """
     out: Dict[str, Any] = {"provider": "plant.id", "raw_response": resp}
     try:
-        suggestions = resp.get("suggestions") or resp.get("result") or []
+        suggestions = _extract_suggestions(resp)
         top = suggestions[0] if suggestions else None
-        if top:
+
+        if top and isinstance(top, dict):
+            common = _extract_common_name(top)
+            sci = top.get("scientific_name") or top.get("name") or top.get("species")
+            conf = _extract_confidence(top, resp)
+
+            details = top.get("details") or {}
+            care = _extract_care_info(details)
+
+            # Description
+            desc_raw = details.get("description_all") or details.get("description") or details.get("description_gpt")
+            description = _extract_detail_text_and_citation(desc_raw)["text"]
+
+            health = _extract_health_assessment(resp)
+
             out.update({
-                "id": top.get("id") or top.get("species_id"),
-                "common_name": top.get("plant_name") or top.get("common_names") or None,
-                "scientific_name": top.get("scientific_name") or top.get("name"),
-                "confidence": top.get("probability") or top.get("confidence") or None,
+                "id": str(top.get("id") or top.get("species_id") or ""),
+                "common_name": common,
+                "scientific_name": str(sci) if sci is not None else None,
+                "confidence": conf,
+                "care": care,
+                "description": description,
+                "health_assessment": health
             })
     except Exception:
         # If normalization fails, we still return raw_response so callers can
