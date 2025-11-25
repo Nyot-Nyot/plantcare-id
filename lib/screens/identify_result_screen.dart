@@ -59,6 +59,7 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
   }
 
   /// Save identification result to collection
+  /// Uses safe BuildContext handling to avoid use_build_context_synchronously issues
   Future<void> _saveToCollection() async {
     if (widget.imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -71,6 +72,9 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
 
     setState(() => _isSaving = true);
 
+    // ✅ Get ScaffoldMessenger BEFORE async operation to avoid context issues
+    final messenger = ScaffoldMessenger.of(context);
+
     try {
       final collectionNotifier = ref.read(collectionProvider.notifier);
 
@@ -80,25 +84,24 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
         customName: widget.result.commonName,
       );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✓ Berhasil disimpan ke koleksi'),
-            backgroundColor: AppColors.primary,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
+      // ✅ Safe: Use captured messenger, not context
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('✓ Berhasil disimpan ke koleksi'),
+          backgroundColor: AppColors.primary,
+          duration: Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal menyimpan: $e'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
+      // ✅ Safe: Use captured messenger, not context
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Gagal menyimpan: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
     } finally {
+      // Still check mounted before setState
       if (mounted) {
         setState(() => _isSaving = false);
       }

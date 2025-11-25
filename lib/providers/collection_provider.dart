@@ -83,9 +83,7 @@ class CollectionNotifier
 
       // ✅ Optimized: Remove from state in-memory
       state.whenData((collections) {
-        state = AsyncValue.data(
-          collections.where((c) => c.id != id).toList(),
-        );
+        state = AsyncValue.data(collections.where((c) => c.id != id).toList());
       });
     } catch (error) {
       rethrow;
