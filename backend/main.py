@@ -112,21 +112,16 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
         while attempt < 4:
                     try:
                         # Include api key in body if configured, otherwise rely on header.
+                        final_payload = payload
                         if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
-                            payload_with_key = {**payload, "api_key": PLANT_ID_API_KEY}
-                            r = await client.post(
-                                PLANT_ID_URL,
-                                params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
-                                json=payload_with_key,
-                                headers=headers,
-                            )
-                        else:
-                            r = await client.post(
-                                PLANT_ID_URL,
-                                params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
-                                json=payload,
-                                headers=headers,
-                            )
+                            final_payload = {**payload, "api_key": PLANT_ID_API_KEY}
+
+                        r = await client.post(
+                            PLANT_ID_URL,
+                            params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
+                            json=final_payload,
+                            headers=headers,
+                        )
                         # raise_for_status will raise HTTPStatusError for 4xx/5xx
                         r.raise_for_status()
                         return r.json()
