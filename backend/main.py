@@ -231,12 +231,12 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
             try:
                 if lat is not None:
                     payload['latitude'] = float(str(lat))
-            except Exception:
+            except (ValueError, TypeError):
                 pass
             try:
                 if lon is not None:
                     payload['longitude'] = float(str(lon))
-            except Exception:
+            except (ValueError, TypeError):
                 pass
             normalized = await _process_and_cache(cache_key, payload)
             return JSONResponse(content=normalized)
