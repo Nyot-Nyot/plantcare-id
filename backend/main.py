@@ -277,6 +277,135 @@ def _extract_detail_text_and_citation(v: Any) -> Dict[str, Optional[str]]:
     return {"text": str(v), "citation": None}
 
 
+def _extract_suggestions(resp: dict) -> list:
+    """Extract suggestions list from response."""
+    suggestions = []
+    if isinstance(resp, dict):
+        result_obj = resp.get("result") or {}
+        if isinstance(result_obj, dict):
+            classification = result_obj.get("classification")
+            if isinstance(classification, dict):
+                s = classification.get("suggestions")
+                if isinstance(s, list):
+                    suggestions = s
+        # fallback: top-level suggestions may exist
+        if not suggestions:
+            s2 = resp.get("suggestions")
+            if isinstance(s2, list):
+                suggestions = s2
+    return suggestions
+
+
+def _extract_common_name(top: dict) -> Optional[str]:
+    """Extract common name from top suggestion."""
+    common = None
+    if top.get("plant_name"):
+        common = top.get("plant_name")
+    elif top.get("common_names"):
+        cn = top.get("common_names")
+        if isinstance(cn, list) and len(cn) > 0:
+            common = str(cn[0])
+        else:
+            common = str(cn)
+
+    if not common:
+        details = top.get("details") or {}
+        if isinstance(details, dict) and details.get("common_names"):
+            cn2 = details.get("common_names")
+            if isinstance(cn2, list) and len(cn2) > 0:
+                common = str(cn2[0])
+            else:
+                common = str(cn2)
+    return common
+
+
+def _extract_confidence(top: dict, resp: dict) -> Optional[float]:
+    """Extract confidence/probability."""
+    conf = None
+    for k in ("probability", "prob", "confidence"):
+        v = top.get(k)
+        if isinstance(v, (int, float)):
+            conf = float(v)
+            break
+
+    if conf is None and isinstance(resp.get("result"), dict):
+        maybe = resp["result"].get("classification")
+        if isinstance(maybe, dict):
+            first = maybe.get("suggestions")
+            if isinstance(first, list) and len(first) > 0 and isinstance(first[0], dict):
+                for k in ("probability", "prob", "confidence"):
+                    v = first[0].get(k)
+                    if isinstance(v, (int, float)):
+                        conf = float(v)
+                        break
+    return conf
+
+
+def _extract_care_info(details: dict) -> dict:
+    """Extract care information (watering, light)."""
+    care = {}
+
+    # Watering
+    watering_raw = details.get("watering")
+    best_watering = _extract_detail_text_and_citation(details.get("best_watering"))
+    watering_text = None
+    watering_citation = best_watering["citation"]
+
+    # 1. Try structured watering (Indonesian friendly)
+    if isinstance(watering_raw, dict):
+        min_val = watering_raw.get("min")
+        max_val = watering_raw.get("max")
+        if min_val is not None or max_val is not None:
+            if min_val is not None and max_val is not None:
+                watering_text = f"Kelembaban ideal: {min_val} — {max_val}"
+            elif min_val is not None:
+                watering_text = f"Kelembaban minimal: {min_val}"
+            else:
+                watering_text = f"Kelembaban hingga: {max_val}"
+
+            if watering_raw.get("citation"):
+                watering_citation = str(watering_raw.get("citation"))
+
+    # 2. Fallback to English text
+    if not watering_text and best_watering["text"]:
+        watering_text = best_watering["text"].strip()
+        watering_citation = best_watering["citation"]
+
+    if watering_text:
+        care["watering"] = {"text": watering_text, "citation": watering_citation}
+
+    # Light
+    light_raw = details.get("best_light_condition") or details.get("best_light")
+    light_info = _extract_detail_text_and_citation(light_raw)
+    if light_info["text"]:
+        care["light"] = {"text": light_info["text"].strip(), "citation": light_info["citation"]}
+
+    return care
+
+
+def _extract_health_assessment(resp: dict) -> dict:
+    """Extract health assessment."""
+    health = {"is_healthy": True, "probability": 1.0, "diseases": []}
+    result_obj = resp.get("result")
+    if isinstance(result_obj, dict):
+        is_healthy_obj = result_obj.get("is_healthy")
+        if isinstance(is_healthy_obj, dict):
+            prob = is_healthy_obj.get("probability")
+            if isinstance(prob, (int, float)):
+                health["probability"] = float(prob)
+                health["is_healthy"] = float(prob) >= 0.5
+
+        disease_obj = result_obj.get("disease")
+        if isinstance(disease_obj, dict):
+            suggestions = disease_obj.get("suggestions")
+            if isinstance(suggestions, list):
+                health["diseases"] = [
+                    {"name": d.get("name"), "probability": d.get("probability")}
+                    for d in suggestions if isinstance(d, dict)
+                ]
+    return health
+
+
 def _normalize_plant_id_response(resp: dict) -> dict:
     """Normalize plant.id response to our minimal schema.
 
@@ -285,132 +414,22 @@ def _normalize_plant_id_response(resp: dict) -> dict:
     """
     out: Dict[str, Any] = {"provider": "plant.id", "raw_response": resp}
     try:
-        # Plant.id v3 typically nests suggestions at result.classification.suggestions
-        suggestions = []
-        result_obj = {}
-        if isinstance(resp, dict):
-            result_obj = resp.get("result") or {}
-            if isinstance(result_obj, dict):
-                classification = result_obj.get("classification")
-                if isinstance(classification, dict):
-                    s = classification.get("suggestions")
-                    if isinstance(s, list):
-                        suggestions = s
-            # fallback: top-level suggestions may exist
-            if not suggestions:
-                s2 = resp.get("suggestions")
-                if isinstance(s2, list):
-                    suggestions = s2
-
+        suggestions = _extract_suggestions(resp)
         top = suggestions[0] if suggestions else None
+
         if top and isinstance(top, dict):
-            # common name may be in 'plant_name' or 'common_names' (list)
-            common = None
-            if top.get("plant_name"):
-                common = top.get("plant_name")
-            elif top.get("common_names"):
-                cn = top.get("common_names")
-                if isinstance(cn, list) and len(cn) > 0:
-                    # prefer the first common name only
-                    common = str(cn[0])
-                else:
-                    common = str(cn)
-            # Fallback: sometimes common names are provided inside `details`
-            # (e.g. top['details']['common_names']). Use that when top-level
-            # common name is missing to improve UI localisation.
-            details = top.get("details") or {}
-            if not common:
-                if isinstance(details, dict) and details.get("common_names"):
-                    cn2 = details.get("common_names")
-                    if isinstance(cn2, list) and len(cn2) > 0:
-                        common = str(cn2[0])
-                    else:
-                        common = str(cn2)
-
+            common = _extract_common_name(top)
             sci = top.get("scientific_name") or top.get("name") or top.get("species")
-            # probability/confidence field names vary
-            conf = None
-            for k in ("probability", "prob", "confidence"):
-                v = top.get(k)
-                if isinstance(v, (int, float)):
-                    conf = float(v)
-                    break
-            # If still missing, check nested result -> probability
-            if conf is None and isinstance(resp.get("result"), dict):
-                maybe = resp["result"].get("classification")
-                if isinstance(maybe, dict):
-                    first = maybe.get("suggestions")
-                    if isinstance(first, list) and len(first) > 0 and isinstance(first[0], dict):
-                        for k in ("probability", "prob", "confidence"):
-                            v = first[0].get(k)
-                            if isinstance(v, (int, float)):
-                                conf = float(v)
-                                break
+            conf = _extract_confidence(top, resp)
 
-            # --- Care & Description Extraction ---
-            care = {}
-
-            # Watering
-            watering_raw = details.get("watering")
-            best_watering = _extract_detail_text_and_citation(details.get("best_watering"))
-            watering_text = None
-            watering_citation = best_watering["citation"]
-
-            # 1. Try structured watering (Indonesian friendly)
-            if isinstance(watering_raw, dict):
-                min_val = watering_raw.get("min")
-                max_val = watering_raw.get("max")
-                if min_val is not None or max_val is not None:
-                    if min_val is not None and max_val is not None:
-                        watering_text = f"Kelembaban ideal: {min_val} — {max_val}"
-                    elif min_val is not None:
-                        watering_text = f"Kelembaban minimal: {min_val}"
-                    else:
-                        watering_text = f"Kelembaban hingga: {max_val}"
-
-                    if watering_raw.get("citation"):
-                        watering_citation = str(watering_raw.get("citation"))
-
-            # 2. Fallback to English text
-            if not watering_text and best_watering["text"]:
-                watering_text = best_watering["text"].strip()
-                watering_citation = best_watering["citation"]
-
-            if watering_text:
-                care["watering"] = {"text": watering_text, "citation": watering_citation}
-
-            # Light
-            light_raw = details.get("best_light_condition") or details.get("best_light")
-            light_info = _extract_detail_text_and_citation(light_raw)
-            if light_info["text"]:
-                care["light"] = {"text": light_info["text"].strip(), "citation": light_info["citation"]}
+            details = top.get("details") or {}
+            care = _extract_care_info(details)
 
             # Description
             desc_raw = details.get("description_all") or details.get("description") or details.get("description_gpt")
             description = _extract_detail_text_and_citation(desc_raw)["text"]
 
-            # --- Health Assessment Extraction ---
-            health = {"is_healthy": True, "probability": 1.0, "diseases": []}
-            if isinstance(result_obj, dict):
-                is_healthy_obj = result_obj.get("is_healthy")
-                if isinstance(is_healthy_obj, dict):
-                    prob = is_healthy_obj.get("probability")
-                    if isinstance(prob, (int, float)):
-                        health["probability"] = float(prob)
-                        health["is_healthy"] = float(prob) >= 0.5
-
-                disease_obj = result_obj.get("disease")
-                if isinstance(disease_obj, dict):
-                    suggestions = disease_obj.get("suggestions")
-                    if isinstance(suggestions, list):
-                        health["diseases"] = [
-                            {"name": d.get("name"), "probability": d.get("probability")}
-                            for d in suggestions if isinstance(d, dict)
-                        ]
-                        if health["diseases"]:
-                             # If diseases are present, trust the disease model over the binary is_healthy
-                             # usually if disease suggestions exist, it's not healthy
-                             pass
+            health = _extract_health_assessment(resp)
 
             out.update({
                 "id": str(top.get("id") or top.get("species_id") or ""),
