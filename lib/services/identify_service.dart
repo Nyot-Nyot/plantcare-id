@@ -27,6 +27,7 @@ class IdentifyService {
     Duration? timeout,
     double? latitude,
     double? longitude,
+    bool checkHealth = false,
   }) {
     if (_baseUrl.trim().isEmpty) {
       throw StateError(
@@ -39,7 +40,13 @@ class IdentifyService {
 
     (() async {
       try {
-        final uri = Uri.parse('$_baseUrl/identify');
+        final baseUri = Uri.parse('$_baseUrl/identify');
+        final queryParams = Map<String, String>.from(baseUri.queryParameters);
+        if (checkHealth) {
+          queryParams['check_health'] = 'true';
+        }
+        final uri = baseUri.replace(queryParameters: queryParams);
+
         final request = http.MultipartRequest('POST', uri);
         final stream = http.ByteStream(image.openRead());
         final length = await image.length();
@@ -65,6 +72,10 @@ class IdentifyService {
         if (isCancelled) return;
         if (status >= 200 && status < 300) {
           final jsonBody = json.decode(respStr) as Map<String, dynamic>;
+          print('DEBUG SERVICE: Response JSON: $jsonBody');
+          print(
+            'DEBUG SERVICE: health_assessment: ${jsonBody['health_assessment']}',
+          );
           completer.complete(IdentifyResult.fromJson(jsonBody));
         } else {
           completer.completeError(

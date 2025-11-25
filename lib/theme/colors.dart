@@ -11,6 +11,7 @@ class AppColors {
   static const secondary = Color(0xFF58D68D);
   static const accent = Color(0xFFF2C94C);
   static const danger = Color(0xFFE74C3C);
+  static const warning = Color(0xFFF39C12); // Added for low confidence warning
   // Light accent used for subtle icon backgrounds in the profile screen
   static const accentLight = Color(0xFFFEF5E7);
 
@@ -32,6 +33,9 @@ class AppColors {
   // Additional tokens used by small components
   static const surfaceBorder = Color(0xFFECF0F1);
   static const surfaceSuccess = Color(0xFFE8F8F5);
+  static const surfaceWarning = Color(
+    0xFFFEF9E7,
+  ); // Added for low confidence warning
   static const surfaceError = Color(0xFFFDEEEE);
   static const imageBg = Color(0xFFF2F4F6);
 }

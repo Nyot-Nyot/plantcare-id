@@ -201,7 +201,7 @@ async def health_check():
 
 
 @app.post("/identify")
-async def identify(request: Request, image: UploadFile | None = File(None)):
+async def identify(request: Request, image: UploadFile | None = File(None), check_health: bool = False):
     """Identify endpoint for the app orchestrator.
 
     Accepts either multipart form upload (file field `image`) or JSON body with
@@ -222,11 +222,17 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
             content = await image.read()
             if not content:
                 raise HTTPException(status_code=400, detail="Empty file uploaded")
-            cache_key = _make_cache_key_for_bytes(content)
+
+            # Include check_health in cache key
+            cache_key = _make_cache_key_for_bytes(content) + f"_h{check_health}_v2"
 
             # Prepare base64 payload for plant.id (body-based API)
             b64 = base64.b64encode(content).decode("ascii")
-            payload: dict = {"images": [b64]}
+            payload: dict = {"images": [b64], "similar_images": True}
+
+            if check_health:
+                payload["health"] = "all"
+
             # include optional coordinates when provided
             try:
                 if lat is not None:
@@ -246,8 +252,12 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
         image_url = body.get("image_url")
         if not image_url:
             raise HTTPException(status_code=400, detail="Provide `image` file or `image_url` in JSON body")
-        cache_key = hashlib.sha256(image_url.encode("utf-8")).hexdigest()
-        payload = {"image_url": image_url}
+
+        cache_key = hashlib.sha256(image_url.encode("utf-8")).hexdigest() + f"_h{check_health}_v2"
+        payload = {"image_url": image_url, "similar_images": True}
+        if check_health:
+            payload["health"] = "all"
+
         normalized = await _process_and_cache(cache_key, payload)
         return JSONResponse(content=normalized)
 
@@ -383,26 +393,50 @@ def _extract_care_info(details: dict) -> dict:
     return care
 
 
-def _extract_health_assessment(resp: dict) -> dict:
+def _extract_health_assessment(resp: dict) -> Optional[dict]:
     """Extract health assessment."""
-    health = {"is_healthy": True, "probability": 1.0, "diseases": []}
     result_obj = resp.get("result")
-    if isinstance(result_obj, dict):
-        is_healthy_obj = result_obj.get("is_healthy")
-        if isinstance(is_healthy_obj, dict):
-            prob = is_healthy_obj.get("probability")
-            if isinstance(prob, (int, float)):
-                health["probability"] = float(prob)
-                health["is_healthy"] = float(prob) >= 0.5
+    if not isinstance(result_obj, dict):
+        return None
 
-        disease_obj = result_obj.get("disease")
-        if isinstance(disease_obj, dict):
-            suggestions = disease_obj.get("suggestions")
-            if isinstance(suggestions, list):
-                health["diseases"] = [
-                    {"name": d.get("name"), "probability": d.get("probability")}
-                    for d in suggestions if isinstance(d, dict)
-                ]
+    # If 'is_healthy' is missing, we assume health wasn't requested/returned
+    if "is_healthy" not in result_obj:
+        return None
+
+    health = {"is_healthy": True, "probability": 1.0, "diseases": []}
+    is_healthy_obj = result_obj.get("is_healthy")
+    if isinstance(is_healthy_obj, dict):
+        prob = is_healthy_obj.get("probability")
+        if isinstance(prob, (int, float)):
+            health["probability"] = float(prob)
+            health["is_healthy"] = float(prob) >= 0.5
+
+    disease_obj = result_obj.get("disease")
+    if isinstance(disease_obj, dict):
+        suggestions = disease_obj.get("suggestions")
+        if isinstance(suggestions, list):
+            logger.info(f"DEBUG: Found {len(suggestions)} disease suggestions")
+            for idx, d in enumerate(suggestions):
+                similar_imgs = d.get("similar_images", [])
+                logger.info(f"DEBUG: Disease {idx} ({d.get('name')}): {len(similar_imgs)} similar_images")
+                if similar_imgs:
+                    logger.info(f"DEBUG: First image keys: {similar_imgs[0].keys() if similar_imgs else 'N/A'}")
+
+            health["diseases"] = [
+                {
+                    "name": d.get("name"),
+                    "probability": d.get("probability"),
+                    "similar_images": [
+                        {
+                            "url": img.get("url"),
+                            "url_small": img.get("url_small")
+                        }
+                        for img in d.get("similar_images", [])
+                        if isinstance(img, dict)
+                    ]
+                }
+                for d in suggestions if isinstance(d, dict)
+            ]
     return health
 
 

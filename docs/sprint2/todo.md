@@ -81,8 +81,8 @@ Acceptance criteria:
 ### 6. Client — Identify Result screen (3-4h)
 
 [x] Buat `IdentifyResultScreen` menampilkan: - Thumbnail image - Common name & scientific name - Confidence score (progress bar + numeric) - Provider badge (Plant.id) - Top suggestions (jika available)
-[ ] Tindakan: Save to collection, View guide (placeholder), Retake (1.5-2h)
-[ ] Jika confidence <70%: tampilkan warning dan action (retake / try gallery) (0.5h)
+[x] Tindakan: Save to collection, View guide (placeholder), Retake (1.5-2h)
+[x] Jika confidence <70%: tampilkan warning dan action (retake / try gallery) (0.5h)
 
 Acceptance criteria:
 

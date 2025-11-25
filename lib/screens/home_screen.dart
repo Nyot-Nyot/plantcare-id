@@ -7,7 +7,6 @@ import '../theme/text_styles.dart';
 import '../widgets/collection_card.dart';
 import '../widgets/dashboard_tile.dart';
 import 'camera_capture_screen_v2.dart';
-import 'camera_disease_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -84,7 +83,9 @@ class HomeScreen extends ConsumerWidget {
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => const CameraDiseaseScreen(),
+                              builder: (_) => const CameraCaptureScreenV2(
+                                checkHealth: true,
+                              ),
                             ),
                           );
                         },
