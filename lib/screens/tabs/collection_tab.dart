@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -186,7 +185,7 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
                       final collection = filteredCollections[index];
                       return _CollectionCard(
                         collection: collection,
-                        isHealthy: _isHealthy(collection),
+                        isHealthy: collection.isHealthy,
                         onTap: () => _navigateToDetail(collection),
                         onDelete: () => _handleDelete(collection),
                       );
@@ -238,40 +237,20 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
 
   int _getHealthyCount(List<PlantCollection>? collections) {
     if (collections == null) return 0;
-    return collections.where((c) => _isHealthy(c)).length;
+    return collections.where((c) => c.isHealthy).length;
   }
 
   int _getNeedsAttentionCount(List<PlantCollection>? collections) {
     if (collections == null) return 0;
-    return collections.where((c) => !_isHealthy(c)).length;
-  }
-
-  bool _isHealthy(PlantCollection collection) {
-    if (collection.identificationData == null) return true;
-
-    try {
-      final data = jsonDecode(collection.identificationData!);
-      final healthAssessment = data['health_assessment'];
-
-      if (healthAssessment == null) return true;
-
-      // Check is_healthy flag
-      if (healthAssessment['is_healthy'] == false) {
-        return false;
-      }
-
-      return true;
-    } catch (e) {
-      return true; // Default to healthy if parsing fails
-    }
+    return collections.where((c) => !c.isHealthy).length;
   }
 
   List<PlantCollection> _filterCollections(List<PlantCollection> collections) {
     switch (_selectedFilter) {
       case 'healthy':
-        return collections.where((c) => _isHealthy(c)).toList();
+        return collections.where((c) => c.isHealthy).toList();
       case 'needs_attention':
-        return collections.where((c) => !_isHealthy(c)).toList();
+        return collections.where((c) => !c.isHealthy).toList();
       default:
         return collections;
     }
@@ -328,7 +307,14 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
     }
 
     try {
-      final data = jsonDecode(collection.identificationData!);
+      // Use model's helper method for decoding
+      final data = PlantCollection.decodeIdentificationData(
+        collection.identificationData,
+      );
+      if (data == null) {
+        throw Exception('Failed to decode identification data');
+      }
+
       final result = IdentifyResult.fromJson(data);
       final imageFile = File(collection.imageUrl);
 

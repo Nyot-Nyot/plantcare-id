@@ -512,7 +512,7 @@ test('deleteCollection removes item from state', () async {
 
 -   [Flutter State Management Best Practices](https://docs.flutter.dev/development/data-and-backend/state-mgmt/options)
 -   [Riverpod StateNotifier](https://riverpod.dev/docs/concepts/providers#statenotifierprovider)
-- [Effective Dart - Performance](https://dart.dev/guides/language/effective-dart/usage#performance)
+-   [Effective Dart - Performance](https://dart.dev/guides/language/effective-dart/usage#performance)
 
 ---
 
@@ -526,7 +526,7 @@ Using `BuildContext` after `await` can cause crashes if the widget is disposed f
 // ❌ UNSAFE: Context may be invalid after await
 Future<void> saveData() async {
   await someAsyncOperation();
-  
+
   // Widget might be disposed here!
   if (mounted) {
     ScaffoldMessenger.of(context).showSnackBar(...); // ⚠️ Context may be stale
@@ -535,11 +535,12 @@ Future<void> saveData() async {
 ```
 
 **Problems:**
-- Widget disposed during async operation → context becomes invalid
-- `mounted` check prevents crash but context is still stale
-- Can cause subtle bugs: wrong navigator, wrong scaffold, etc.
-- Violates Flutter best practices
-- Triggers lint warnings in CI/CD
+
+-   Widget disposed during async operation → context becomes invalid
+-   `mounted` check prevents crash but context is still stale
+-   Can cause subtle bugs: wrong navigator, wrong scaffold, etc.
+-   Violates Flutter best practices
+-   Triggers lint warnings in CI/CD
 
 ### Root Cause
 
@@ -561,9 +562,9 @@ Future<void> saveData() async {
 // ✅ SAFE: Capture messenger before await
 Future<void> saveData() async {
   final messenger = ScaffoldMessenger.of(context);
-  
+
   await someAsyncOperation();
-  
+
   // No context needed, use captured messenger
   messenger.showSnackBar(
     const SnackBar(content: Text('Success')),
@@ -574,13 +575,14 @@ Future<void> saveData() async {
 ### Implementation in IdentifyResultScreen
 
 #### Before (Unsafe)
+
 ```dart
 Future<void> _saveToCollection() async {
   setState(() => _isSaving = true);
 
   try {
     await collectionNotifier.saveFromIdentification(...);
-    
+
     // ❌ Context used after await
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(...);
@@ -595,16 +597,17 @@ Future<void> _saveToCollection() async {
 ```
 
 #### After (Safe)
+
 ```dart
 Future<void> _saveToCollection() async {
   setState(() => _isSaving = true);
-  
+
   // ✅ Capture messenger before async operation
   final messenger = ScaffoldMessenger.of(context);
 
   try {
     await collectionNotifier.saveFromIdentification(...);
-    
+
     // ✅ Safe: Use captured messenger
     messenger.showSnackBar(
       const SnackBar(
@@ -631,14 +634,14 @@ Future<void> _saveToCollection() async {
 
 ### When to Capture vs When to Check Mounted
 
-| Operation | Strategy | Reason |
-|-----------|----------|--------|
-| **ScaffoldMessenger** | Capture before await | Shows message in correct context |
-| **Navigator** | Capture before await | Navigates in correct route |
-| **Theme.of(context)** | Capture before await | Gets correct theme |
-| **MediaQuery.of(context)** | Capture before await | Gets correct screen size |
-| **setState()** | Check `mounted` | Modifies widget state |
-| **initState/dispose** | N/A | Never async |
+| Operation                  | Strategy             | Reason                           |
+| -------------------------- | -------------------- | -------------------------------- |
+| **ScaffoldMessenger**      | Capture before await | Shows message in correct context |
+| **Navigator**              | Capture before await | Navigates in correct route       |
+| **Theme.of(context)**      | Capture before await | Gets correct theme               |
+| **MediaQuery.of(context)** | Capture before await | Gets correct screen size         |
+| **setState()**             | Check `mounted`      | Modifies widget state            |
+| **initState/dispose**      | N/A                  | Never async                      |
 
 ### Common Inherited Widgets to Capture
 
@@ -648,9 +651,9 @@ Future<void> complexOperation() async {
   final messenger = ScaffoldMessenger.of(context);
   final navigator = Navigator.of(context);
   final theme = Theme.of(context);
-  
+
   await someAsyncOperation();
-  
+
   // Use captured values safely
   messenger.showSnackBar(...);
   navigator.pop();
@@ -703,18 +706,18 @@ Tests should verify safe context handling:
 ```dart
 testWidgets('saveToCollection handles context safely', (tester) async {
   await tester.pumpWidget(MyApp());
-  
+
   // Find save button
   final saveButton = find.text('Simpan ke Koleksi');
-  
+
   // Tap button
   await tester.tap(saveButton);
   await tester.pump(); // Start async operation
-  
+
   // Navigate away before operation completes
   await tester.pageBack();
   await tester.pumpAndSettle();
-  
+
   // Should not crash even though widget disposed
   // (messenger was captured before await)
 });
@@ -726,8 +729,8 @@ Enable the lint in `analysis_options.yaml`:
 
 ```yaml
 linter:
-  rules:
-    use_build_context_synchronously: true
+    rules:
+        use_build_context_synchronously: true
 ```
 
 This will catch violations at compile time.
@@ -735,6 +738,7 @@ This will catch violations at compile time.
 ### Common Mistakes to Avoid
 
 #### Mistake 1: Only checking mounted
+
 ```dart
 // ❌ BAD: mounted check doesn't solve the problem
 if (mounted) {
@@ -743,6 +747,7 @@ if (mounted) {
 ```
 
 #### Mistake 2: Capturing context instead of inherited widget
+
 ```dart
 // ❌ BAD: Context is still stale
 final ctx = context;
@@ -751,6 +756,7 @@ ScaffoldMessenger.of(ctx).showSnackBar(...); // Still wrong!
 ```
 
 #### Mistake 3: Not capturing when navigating
+
 ```dart
 // ❌ BAD: Navigator could be wrong
 await operation();
@@ -760,45 +766,50 @@ Navigator.of(context).pushNamed('/home');
 ### Best Practices Summary
 
 1. **Always capture inherited widgets before await**
-   ```dart
-   final messenger = ScaffoldMessenger.of(context);
-   ```
+
+    ```dart
+    final messenger = ScaffoldMessenger.of(context);
+    ```
 
 2. **Use captured instances after await**
-   ```dart
-   messenger.showSnackBar(...);
-   ```
+
+    ```dart
+    messenger.showSnackBar(...);
+    ```
 
 3. **Still check mounted before setState**
-   ```dart
-   if (mounted) {
-     setState(() => ...);
-   }
-   ```
+
+    ```dart
+    if (mounted) {
+      setState(() => ...);
+    }
+    ```
 
 4. **Enable lint to catch violations**
-   ```yaml
-   use_build_context_synchronously: true
-   ```
+
+    ```yaml
+    use_build_context_synchronously: true
+    ```
 
 5. **Test with navigation during async operations**
 
 ### Performance Impact
 
 **None.** Capturing inherited widgets has no performance cost:
-- `ScaffoldMessenger.of(context)` already traverses tree
-- Capturing just stores the reference
-- No memory overhead (single pointer)
+
+-   `ScaffoldMessenger.of(context)` already traverses tree
+-   Capturing just stores the reference
+-   No memory overhead (single pointer)
 
 ### References
 
-- [Flutter API Docs - BuildContext](https://api.flutter.dev/flutter/widgets/BuildContext-class.html)
-- [Flutter Best Practices - Async and Context](https://docs.flutter.dev/cookbook/networking/fetch-data#5-display-the-data)
-- [Dart Lint - use_build_context_synchronously](https://dart.dev/tools/linter-rules/use_build_context_synchronously)
-- [Flutter GitHub - Context Safety Discussion](https://github.com/flutter/flutter/issues/90004)
+-   [Flutter API Docs - BuildContext](https://api.flutter.dev/flutter/widgets/BuildContext-class.html)
+-   [Flutter Best Practices - Async and Context](https://docs.flutter.dev/cookbook/networking/fetch-data#5-display-the-data)
+-   [Dart Lint - use_build_context_synchronously](https://dart.dev/tools/linter-rules/use_build_context_synchronously)
+-   [Flutter GitHub - Context Safety Discussion](https://github.com/flutter/flutter/issues/90004)
 
 ---
 
-**Last Updated:** November 25, 2025  
-**Author:** Development Team  
+**Last Updated:** November 25, 2025
+**Author:** Development Team
 **Review Date:** Sprint 4 Planning

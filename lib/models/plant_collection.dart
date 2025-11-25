@@ -239,4 +239,89 @@ class PlantCollection {
       return null;
     }
   }
+
+  /// Check if the plant is healthy based on identification data
+  ///
+  /// Returns `true` if:
+  /// - No identification data (benefit of doubt)
+  /// - health_assessment is null (no disease check performed)
+  /// - health_assessment.is_healthy is true
+  ///
+  /// Returns `false` if:
+  /// - health_assessment.is_healthy is explicitly false
+  ///
+  /// This logic is centralized in the model for:
+  /// - Single source of truth
+  /// - Easy testing
+  /// - Reusability across UI components
+  /// - Separation of concerns
+  bool get isHealthy {
+    if (identificationData == null) return true;
+
+    try {
+      final data = decodeIdentificationData(identificationData);
+      if (data == null) return true;
+
+      final healthAssessment = data['health_assessment'];
+      if (healthAssessment == null) return true;
+
+      // Check is_healthy flag
+      if (healthAssessment['is_healthy'] == false) {
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      // Default to healthy if parsing fails
+      return true;
+    }
+  }
+
+  /// Get list of diseases from identification data
+  ///
+  /// Returns empty list if:
+  /// - No identification data
+  /// - health_assessment is null
+  /// - diseases array is empty or invalid
+  ///
+  /// This provides convenient access to disease information
+  /// without duplicating parsing logic.
+  List<Map<String, dynamic>> get diseases {
+    if (identificationData == null) return [];
+
+    try {
+      final data = decodeIdentificationData(identificationData);
+      if (data == null) return [];
+
+      final healthAssessment = data['health_assessment'];
+      if (healthAssessment == null) return [];
+
+      final diseasesRaw = healthAssessment['diseases'];
+      if (diseasesRaw is! List) return [];
+
+      return diseasesRaw
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Get the most likely disease (highest probability)
+  ///
+  /// Returns null if no diseases detected.
+  /// Useful for showing summary information.
+  Map<String, dynamic>? get primaryDisease {
+    final diseaseList = diseases;
+    if (diseaseList.isEmpty) return null;
+
+    // Sort by probability and return highest
+    diseaseList.sort((a, b) {
+      final probA = (a['probability'] as num?)?.toDouble() ?? 0.0;
+      final probB = (b['probability'] as num?)?.toDouble() ?? 0.0;
+      return probB.compareTo(probA);
+    });
+
+    return diseaseList.first;
+  }
 }
