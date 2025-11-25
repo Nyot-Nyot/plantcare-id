@@ -12,6 +12,19 @@ final collectionRepositoryProvider = Provider<CollectionRepository>((ref) {
 });
 
 /// State notifier for managing collection state
+///
+/// ## Performance Optimization
+/// This notifier uses in-memory state manipulation instead of reloading
+/// from database after every operation. Benefits:
+/// - Faster UI updates (no database I/O wait)
+/// - Reduced database load
+/// - Better UX with instant feedback
+/// - Scalable for large collections
+///
+/// The state is only reloaded from database when:
+/// - Initial load (constructor)
+/// - Explicit refresh (loadCollections)
+/// - Sync operations (syncCollections)
 class CollectionNotifier
     extends StateNotifier<AsyncValue<List<PlantCollection>>> {
   final CollectionRepository _repository;
@@ -20,7 +33,7 @@ class CollectionNotifier
     loadCollections();
   }
 
-  /// Load all collections
+  /// Load all collections from database
   Future<void> loadCollections({String? userId}) async {
     state = const AsyncValue.loading();
     try {
@@ -32,6 +45,7 @@ class CollectionNotifier
   }
 
   /// Save identification result to collection
+  /// Optimized: Adds to in-memory state without database reload
   Future<PlantCollection?> saveFromIdentification({
     required IdentifyResult result,
     required File imageFile,
@@ -48,8 +62,11 @@ class CollectionNotifier
         notes: notes,
       );
 
-      // Reload collections to update UI
-      await loadCollections(userId: userId);
+      // ✅ Optimized: Update state in-memory instead of reloading
+      state.whenData((collections) {
+        // Add new collection to the beginning of the list (most recent first)
+        state = AsyncValue.data([collection, ...collections]);
+      });
 
       return collection;
     } catch (error) {
@@ -59,26 +76,46 @@ class CollectionNotifier
   }
 
   /// Delete a collection
+  /// Optimized: Removes from in-memory state without database reload
   Future<void> deleteCollection(int id, {String? userId}) async {
     try {
       await _repository.deleteCollection(id);
-      await loadCollections(userId: userId);
+
+      // ✅ Optimized: Remove from state in-memory
+      state.whenData((collections) {
+        state = AsyncValue.data(
+          collections.where((c) => c.id != id).toList(),
+        );
+      });
     } catch (error) {
       rethrow;
     }
   }
 
   /// Update collection notes
+  /// Optimized: Updates in-memory state without database reload
   Future<void> updateNotes(int id, String notes, {String? userId}) async {
     try {
       await _repository.updateNotes(id, notes);
-      await loadCollections(userId: userId);
+
+      // ✅ Optimized: Update specific item in state
+      state.whenData((collections) {
+        state = AsyncValue.data(
+          collections.map((c) {
+            if (c.id == id) {
+              return c.copyWith(notes: notes);
+            }
+            return c;
+          }).toList(),
+        );
+      });
     } catch (error) {
       rethrow;
     }
   }
 
   /// Update collection custom name
+  /// Optimized: Updates in-memory state without database reload
   Future<void> updateCustomName(
     int id,
     String customName, {
@@ -86,17 +123,41 @@ class CollectionNotifier
   }) async {
     try {
       await _repository.updateCustomName(id, customName);
-      await loadCollections(userId: userId);
+
+      // ✅ Optimized: Update specific item in state
+      state.whenData((collections) {
+        state = AsyncValue.data(
+          collections.map((c) {
+            if (c.id == id) {
+              return c.copyWith(customName: customName);
+            }
+            return c;
+          }).toList(),
+        );
+      });
     } catch (error) {
       rethrow;
     }
   }
 
   /// Update last cared at timestamp
+  /// Optimized: Updates in-memory state without database reload
   Future<void> updateLastCaredAt(int id, {String? userId}) async {
     try {
       await _repository.updateLastCaredAt(id);
-      await loadCollections(userId: userId);
+      final now = DateTime.now();
+
+      // ✅ Optimized: Update specific item in state
+      state.whenData((collections) {
+        state = AsyncValue.data(
+          collections.map((c) {
+            if (c.id == id) {
+              return c.copyWith(lastCaredAt: now);
+            }
+            return c;
+          }).toList(),
+        );
+      });
     } catch (error) {
       rethrow;
     }
