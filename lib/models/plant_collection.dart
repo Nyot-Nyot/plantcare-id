@@ -2,6 +2,44 @@ import 'dart:convert';
 
 /// Model representing a plant saved in user's collection
 /// Follows architect.md data model for collections table
+///
+/// ## copyWith Limitation
+/// The `copyWith` method in this class has a known limitation:
+/// it cannot set nullable fields to null. This is due to the standard
+/// Dart pattern `field ?? this.field` which treats null as "no change".
+///
+/// ### Example of the limitation:
+/// ```dart
+/// final plant = PlantCollection(notes: "Some notes", ...);
+/// final updated = plant.copyWith(notes: null); // Will NOT clear notes!
+/// // updated.notes is still "Some notes", not null
+/// ```
+///
+/// ### Solutions provided:
+/// 1. **Helper methods**: Use `clearNotes()`, `clearLastCaredAt()`, etc.
+///    ```dart
+///    final cleared = plant.clearNotes(); // notes is now null
+///    ```
+///
+/// 2. **Direct constructor**: For multiple null fields, use the constructor
+///    ```dart
+///    final updated = PlantCollection(
+///      id: plant.id,
+///      customName: plant.customName,
+///      // ... copy other fields
+///      notes: null, // This works!
+///    );
+///    ```
+///
+/// ### Future migration path:
+/// Consider migrating to `freezed` package for automatic code generation:
+/// - Add dependencies: `freezed`, `freezed_annotation`, `build_runner`
+/// - Use `@freezed` annotation
+/// - Run `flutter pub run build_runner build`
+/// - Get proper copyWith with nullable support automatically
+///
+/// For current Sprint 2 scope, the simple implementation with helper
+/// methods is sufficient and avoids additional build complexity.
 class PlantCollection {
   final int? id; // Local database ID (autoincrement)
   final String? userId; // For future backend sync (nullable for guest users)
@@ -74,6 +112,26 @@ class PlantCollection {
   }
 
   /// Create a copy with updated fields
+  ///
+  /// **IMPORTANT LIMITATION:**
+  /// This copyWith implementation cannot set nullable fields to null.
+  /// For example, calling `copyWith(notes: null)` will NOT clear the notes,
+  /// it will keep the existing value due to the `notes ?? this.notes` logic.
+  ///
+  /// **Workaround for clearing nullable fields:**
+  /// Use specific helper methods like:
+  /// - `clearNotes()` to set notes to null
+  /// - `clearLastCaredAt()` to set lastCaredAt to null
+  /// - etc.
+  ///
+  /// **Future Enhancement:**
+  /// Consider using code generation tools like `freezed` package which handles
+  /// nullable fields correctly in copyWith methods. This would require:
+  /// 1. Add freezed and freezed_annotation dependencies
+  /// 2. Add build_runner as dev dependency
+  /// 3. Refactor this class to use @freezed annotation
+  ///
+  /// For now, this simple implementation is sufficient for current use cases.
   PlantCollection copyWith({
     int? id,
     String? userId,
@@ -103,6 +161,66 @@ class PlantCollection {
       reminders: reminders ?? this.reminders,
       confidence: confidence ?? this.confidence,
       synced: synced ?? this.synced,
+    );
+  }
+
+  /// Helper methods to explicitly clear nullable fields
+  /// These methods work around the copyWith limitation for setting null values
+
+  /// Clear the notes field (set to null)
+  PlantCollection clearNotes() {
+    return PlantCollection(
+      id: id,
+      userId: userId,
+      plantCatalogId: plantCatalogId,
+      customName: customName,
+      scientificName: scientificName,
+      imageUrl: imageUrl,
+      notes: null, // Explicitly set to null
+      identificationData: identificationData,
+      createdAt: createdAt,
+      lastCaredAt: lastCaredAt,
+      reminders: reminders,
+      confidence: confidence,
+      synced: synced,
+    );
+  }
+
+  /// Clear the lastCaredAt field (set to null)
+  PlantCollection clearLastCaredAt() {
+    return PlantCollection(
+      id: id,
+      userId: userId,
+      plantCatalogId: plantCatalogId,
+      customName: customName,
+      scientificName: scientificName,
+      imageUrl: imageUrl,
+      notes: notes,
+      identificationData: identificationData,
+      createdAt: createdAt,
+      lastCaredAt: null, // Explicitly set to null
+      reminders: reminders,
+      confidence: confidence,
+      synced: synced,
+    );
+  }
+
+  /// Clear the reminders field (set to null)
+  PlantCollection clearReminders() {
+    return PlantCollection(
+      id: id,
+      userId: userId,
+      plantCatalogId: plantCatalogId,
+      customName: customName,
+      scientificName: scientificName,
+      imageUrl: imageUrl,
+      notes: notes,
+      identificationData: identificationData,
+      createdAt: createdAt,
+      lastCaredAt: lastCaredAt,
+      reminders: null, // Explicitly set to null
+      confidence: confidence,
+      synced: synced,
     );
   }
 
