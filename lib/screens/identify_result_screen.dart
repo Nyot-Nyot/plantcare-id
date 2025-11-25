@@ -19,9 +19,10 @@ class IdentifyResultScreen extends StatefulWidget {
 class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
   bool _expanded = false;
 
-  bool _isHealthy() {
+  bool? _isHealthy() {
     final h = widget.result.healthAssessment;
-    if (h != null && h['is_healthy'] == false) {
+    if (h == null) return null;
+    if (h['is_healthy'] == false) {
       return false;
     }
     return true;
@@ -79,6 +80,265 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
     );
   }
 
+  Widget _buildLowConfidenceWarning(BuildContext context) {
+    final conf = widget.result.confidence ?? 0.0;
+    if (conf >= 0.7) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceWarning,
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Akurasi Identifikasi Rendah',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: AppColors.warning,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Hasil mungkin tidak akurat (<70%). Pastikan foto jelas, fokus, dan pencahayaan cukup.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.warning,
+                side: const BorderSide(color: AppColors.warning),
+              ),
+              child: const Text('Foto Ulang'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiseaseList(BuildContext context) {
+    final health = widget.result.healthAssessment;
+    if (health == null) return const SizedBox.shrink();
+
+    final diseasesRaw = health['diseases'];
+    if (diseasesRaw is! List || diseasesRaw.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final diseases = diseasesRaw;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+          child: Text(
+            'Kemungkinan Penyakit',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          itemCount: diseases.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final d = diseases[index] as Map<String, dynamic>;
+            final name = d['name']?.toString() ?? 'Unknown';
+            final prob = (d['probability'] as num?)?.toDouble() ?? 0.0;
+            final probPct = (prob * 100).toStringAsFixed(1);
+            final images = d['similar_images'] as List<dynamic>?;
+
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                (prob > 0.5
+                                        ? AppColors.danger
+                                        : AppColors.warning)
+                                    .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$probPct%',
+                            style: TextStyle(
+                              color: prob > 0.5
+                                  ? AppColors.danger
+                                  : AppColors.warning,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: prob,
+                        backgroundColor: AppColors.bg,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          prob > 0.5 ? AppColors.danger : AppColors.warning,
+                        ),
+                        minHeight: 6,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Contoh Gambar: ${images?.length ?? 0} gambar',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    if (images != null && images.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 80,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: images.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(width: 8),
+                          itemBuilder: (context, imgIndex) {
+                            final imgData = images[imgIndex];
+                            final imgUrl = (imgData is Map
+                                ? (imgData['url_small'] ?? imgData['url'])
+                                      ?.toString()
+                                : null);
+                            if (imgUrl == null || imgUrl.isEmpty) {
+                              return Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceError,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    'No URL',
+                                    style: TextStyle(fontSize: 10),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                imgUrl,
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Container(
+                                        width: 80,
+                                        height: 80,
+                                        color: AppColors.bg,
+                                        child: const Center(
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                errorBuilder: (_, error, stack) {
+                                  return Container(
+                                    width: 80,
+                                    height: 80,
+                                    color: AppColors.imageBg,
+                                    child: const Icon(
+                                      Icons.broken_image,
+                                      color: AppColors.muted,
+                                      size: 20,
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.bg,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Tidak ada contoh gambar tersedia',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final healthOk = _isHealthy();
@@ -96,6 +356,13 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.camera_alt_outlined),
+            tooltip: 'Foto Ulang',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -165,66 +432,71 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                   ],
                 ),
               ),
+              _buildLowConfidenceWarning(context),
               const SizedBox(height: 16),
 
               // Health box
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: healthOk
-                        ? AppColors.surfaceSuccess
-                        : AppColors.surfaceError,
-                    border: Border.all(
-                      color: healthOk ? AppColors.primary : AppColors.danger,
+              if (healthOk != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: healthOk
+                          ? AppColors.surfaceSuccess
+                          : AppColors.surfaceError,
+                      border: Border.all(
+                        color: healthOk ? AppColors.primary : AppColors.danger,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        height: 48,
-                        width: 48,
-                        decoration: BoxDecoration(
-                          color: healthOk
-                              ? AppColors.primary
-                              : AppColors.danger,
-                          borderRadius: BorderRadius.circular(12),
+                    child: Row(
+                      children: [
+                        Container(
+                          height: 48,
+                          width: 48,
+                          decoration: BoxDecoration(
+                            color: healthOk
+                                ? AppColors.primary
+                                : AppColors.danger,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            healthOk ? Icons.check : Icons.error_outline,
+                            color: Colors.white,
+                          ),
                         ),
-                        child: Icon(
-                          healthOk ? Icons.check : Icons.error_outline,
-                          color: Colors.white,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                healthOk
+                                    ? 'Tanaman Terlihat Sehat'
+                                    : 'Terdeteksi Potensi Penyakit',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                healthOk
+                                    ? 'Tidak ada tanda penyakit terdeteksi. Lanjutkan perawatan rutin!'
+                                    : 'Beberapa gejala penyakit terdeteksi. Periksa detail untuk rekomendasi.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              healthOk
-                                  ? 'Tanaman Terlihat Sehat'
-                                  : 'Terdeteksi Potensi Penyakit',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              healthOk
-                                  ? 'Tidak ada tanda penyakit terdeteksi. Lanjutkan perawatan rutin!'
-                                  : 'Beberapa gejala penyakit terdeteksi. Periksa detail untuk rekomendasi.',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: AppColors.textSecondary),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
+              if (healthOk != null) const SizedBox(height: 16),
+
+              // Disease list (only if not healthy)
+              if (healthOk == false) _buildDiseaseList(context),
 
               // Care cards
               Padding(
@@ -379,6 +651,33 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                         icon: const Icon(Icons.share, color: AppColors.primary),
                         label: const Text(
                           'Bagikan',
+                          style: TextStyle(color: AppColors.primary),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Panduan Lengkap (stub)'),
+                            ),
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.menu_book_outlined,
+                          color: AppColors.primary,
+                        ),
+                        label: const Text(
+                          'Lihat Panduan Lengkap',
                           style: TextStyle(color: AppColors.primary),
                         ),
                       ),

@@ -27,6 +27,7 @@ class IdentifyService {
     Duration? timeout,
     double? latitude,
     double? longitude,
+    bool checkHealth = false,
   }) {
     if (_baseUrl.trim().isEmpty) {
       throw StateError(
@@ -39,7 +40,13 @@ class IdentifyService {
 
     (() async {
       try {
-        final uri = Uri.parse('$_baseUrl/identify');
+        final baseUri = Uri.parse('$_baseUrl/identify');
+        final queryParams = Map<String, String>.from(baseUri.queryParameters);
+        if (checkHealth) {
+          queryParams['check_health'] = 'true';
+        }
+        final uri = baseUri.replace(queryParameters: queryParams);
+
         final request = http.MultipartRequest('POST', uri);
         final stream = http.ByteStream(image.openRead());
         final length = await image.length();

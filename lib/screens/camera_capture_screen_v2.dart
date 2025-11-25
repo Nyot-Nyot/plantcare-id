@@ -16,7 +16,8 @@ import 'identify_result_screen.dart';
 
 /// Full-screen camera capture screen (v2).
 class CameraCaptureScreenV2 extends StatefulWidget {
-  const CameraCaptureScreenV2({super.key});
+  final bool checkHealth;
+  const CameraCaptureScreenV2({super.key, this.checkHealth = false});
 
   @override
   State<CameraCaptureScreenV2> createState() => _CameraCaptureScreenV2State();
@@ -793,7 +794,12 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
       // Ignore location errors and continue without coordinates.
     }
 
-    _currentUploadTask = svc.uploadImage(file, latitude: lat, longitude: lon);
+    _currentUploadTask = svc.uploadImage(
+      file,
+      latitude: lat,
+      longitude: lon,
+      checkHealth: widget.checkHealth,
+    );
     try {
       final result = await _currentUploadTask!.future;
       if (!mounted) return;
