@@ -763,6 +763,71 @@ await operation();
 Navigator.of(context).pushNamed('/home');
 ```
 
+### Pattern Applied in Multiple Locations
+
+This safety pattern is now consistently applied across the codebase:
+
+#### 1. IdentifyResultScreen - Save Operation
+
+```dart
+Future<void> _saveToCollection() async {
+  // Capture BEFORE await
+  final messenger = ScaffoldMessenger.of(context);
+  
+  try {
+    await saveOperation();
+    // Use captured messenger (safe)
+    messenger.showSnackBar(successMessage);
+  } catch (e) {
+    messenger.showSnackBar(errorMessage);
+  }
+}
+```
+
+#### 2. CollectionTab - Delete Operation
+
+```dart
+Future<void> _handleDelete(PlantCollection collection) async {
+  // Capture BEFORE any async operations
+  final messenger = ScaffoldMessenger.of(context);
+  
+  final confirm = await showDialog<bool>(...);
+  
+  if (confirm == true) {
+    try {
+      await ref.read(provider).deleteCollection(id);
+      // Use captured messenger (safe even if user navigated away)
+      messenger.showSnackBar(successMessage);
+    } catch (e) {
+      messenger.showSnackBar(errorMessage);
+    }
+  }
+}
+```
+
+#### 3. CollectionTab - Navigation with Error Handling
+
+```dart
+void _navigateToDetail(PlantCollection collection) {
+  // Capture BEFORE operations that might throw
+  final messenger = ScaffoldMessenger.of(context);
+  
+  if (collection.data == null) {
+    messenger.showSnackBar(noDataMessage);
+    return;
+  }
+  
+  try {
+    final result = parseData(collection);
+    // Context still valid for navigation within same function
+    Navigator.push(context, route);
+  } catch (e) {
+    // Use captured messenger (safe)
+    messenger.showSnackBar(errorMessage);
+  }
+}
+```
+
 ### Best Practices Summary
 
 1. **Always capture inherited widgets before await**

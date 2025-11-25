@@ -299,9 +299,7 @@ class PlantCollection {
       final diseasesRaw = healthAssessment['diseases'];
       if (diseasesRaw is! List) return [];
 
-      return diseasesRaw
-          .whereType<Map<String, dynamic>>()
-          .toList();
+      return diseasesRaw.whereType<Map<String, dynamic>>().toList();
     } catch (e) {
       return [];
     }

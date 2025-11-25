@@ -257,6 +257,9 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
   }
 
   Future<void> _handleDelete(PlantCollection collection) async {
+    // Capture ScaffoldMessenger before any async operations
+    final messenger = ScaffoldMessenger.of(context);
+    
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -279,15 +282,26 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
       ),
     );
 
-    if (confirm == true && mounted) {
-      await ref
-          .read(collectionProvider.notifier)
-          .deleteCollection(collection.id!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+    if (confirm == true) {
+      try {
+        await ref
+            .read(collectionProvider.notifier)
+            .deleteCollection(collection.id!);
+        
+        // Use captured messenger instead of context
+        messenger.showSnackBar(
           const SnackBar(
             content: Text('Berhasil dihapus dari koleksi'),
             duration: Duration(seconds: 2),
+          ),
+        );
+      } catch (e) {
+        // Use captured messenger for error handling too
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Gagal menghapus: $e'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.red,
           ),
         );
       }
@@ -295,9 +309,12 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
   }
 
   void _navigateToDetail(PlantCollection collection) {
+    // Capture messenger before any operations that might fail
+    final messenger = ScaffoldMessenger.of(context);
+    
     // Decode identificationData back to IdentifyResult
     if (collection.identificationData == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('Data identifikasi tidak tersedia'),
           duration: Duration(seconds: 2),
@@ -326,7 +343,8 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      // Use captured messenger instead of context
+      messenger.showSnackBar(
         SnackBar(
           content: Text('Error memuat data: $e'),
           duration: const Duration(seconds: 2),
