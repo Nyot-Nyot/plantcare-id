@@ -20,9 +20,17 @@ except Exception:  # pragma: no cover - optional dependency
 load_dotenv()
 
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
-PLANT_ID_URL = os.getenv("PLANT_ID_URL", "https://api.plant.id/v3/identify")
-# Authentication mode: 'body' (api_key in JSON body) or 'header' (Authorization: Bearer)
+PLANT_ID_URL = os.getenv("PLANT_ID_URL", "https://plant.id/api/v3/identification")
+# Authentication mode: 'body' (api_key in JSON body) or 'header' (Api-Key header)
 PLANT_ID_AUTH_MODE = os.getenv("PLANT_ID_AUTH_MODE", "body")
+# Comma-separated list of details to request from Plant.id to enrich responses.
+# See docs: https://plant.id/api/v3/openapi.yaml for available detail names.
+# Default includes common names, more complete descriptions, watering and light info
+PLANT_ID_DETAILS = os.getenv(
+    "PLANT_ID_DETAILS",
+    "common_names,description_all,watering,best_watering,best_light_condition,propagation_methods",
+)
+PLANT_ID_LANGUAGE = os.getenv("PLANT_ID_LANGUAGE", "id")
 REDIS_URL = os.getenv("REDIS_URL")
 
 logger = logging.getLogger("orchestrator")
@@ -90,8 +98,10 @@ async def _process_and_cache(cache_key: str, payload: dict) -> dict:
 
 async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
+    # Use Api-Key header by default when not operating in `body` auth mode.
+    # Plant.id docs expect the API key in the `Api-Key` header.
     if PLANT_ID_AUTH_MODE != "body" and PLANT_ID_API_KEY:
-        headers["Authorization"] = f"Bearer {PLANT_ID_API_KEY}"
+        headers["Api-Key"] = PLANT_ID_API_KEY
     # Simple retry/backoff. Create a single AsyncClient so connection pooling
     # and keep-alive work across retry attempts instead of recreating the
     # client on each loop iteration.
@@ -101,11 +111,22 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     async with httpx.AsyncClient(timeout=timeout) as client:
         while attempt < 4:
                     try:
+                        # Include api key in body if configured, otherwise rely on header.
                         if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
                             payload_with_key = {**payload, "api_key": PLANT_ID_API_KEY}
-                            r = await client.post(PLANT_ID_URL, json=payload_with_key, headers=headers)
+                            r = await client.post(
+                                PLANT_ID_URL,
+                                params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
+                                json=payload_with_key,
+                                headers=headers,
+                            )
                         else:
-                            r = await client.post(PLANT_ID_URL, json=payload, headers=headers)
+                            r = await client.post(
+                                PLANT_ID_URL,
+                                params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
+                                json=payload,
+                                headers=headers,
+                            )
                         # raise_for_status will raise HTTPStatusError for 4xx/5xx
                         r.raise_for_status()
                         return r.json()
@@ -113,7 +134,10 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
                         # Network-level errors (timeouts, connection errors, DNS, etc.)
                         last_exc = e
                         attempt += 1
-                        logger.warning("Plant.id request failed (attempt %d): %s", attempt, e)
+                        # Use repr(e) so the logged message includes the exception type
+                        # and any internal message for easier debugging (was empty
+                        # previously in some cases).
+                        logger.warning("Plant.id request failed (attempt %d): %r", attempt, e)
                         await asyncio.sleep(backoff)
                         backoff *= 2
                     except httpx.HTTPStatusError as e:
@@ -122,7 +146,7 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
                         if status and 500 <= status < 600:
                             last_exc = e
                             attempt += 1
-                            logger.warning("Plant.id returned %d (attempt %d): %s", status, attempt, e)
+                            logger.warning("Plant.id returned %d (attempt %d): %r", status, attempt, e)
                             await asyncio.sleep(backoff)
                             backoff *= 2
                             continue
@@ -194,6 +218,12 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
     # Prefer multipart file if provided
     try:
         if image is not None:
+            # If the client sent additional form fields (latitude/longitude)
+            # they are available via request.form(). We read them and include
+            # them in the payload forwarded to Plant.id when present.
+            form = await request.form()
+            lat = form.get('latitude')
+            lon = form.get('longitude')
             content = await image.read()
             if not content:
                 raise HTTPException(status_code=400, detail="Empty file uploaded")
@@ -201,7 +231,18 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
 
             # Prepare base64 payload for plant.id (body-based API)
             b64 = base64.b64encode(content).decode("ascii")
-            payload = {"images": [b64]}
+            payload: dict = {"images": [b64]}
+            # include optional coordinates when provided
+            try:
+                if lat is not None:
+                    payload['latitude'] = float(str(lat))
+            except Exception:
+                pass
+            try:
+                if lon is not None:
+                    payload['longitude'] = float(str(lon))
+            except Exception:
+                pass
             normalized = await _process_and_cache(cache_key, payload)
             return JSONResponse(content=normalized)
 
@@ -232,14 +273,72 @@ def _normalize_plant_id_response(resp: dict) -> dict:
     """
     out: Dict[str, Any] = {"provider": "plant.id", "raw_response": resp}
     try:
-        suggestions = resp.get("suggestions") or resp.get("result") or []
+        # Plant.id v3 typically nests suggestions at result.classification.suggestions
+        suggestions = []
+        if isinstance(resp, dict):
+            r = resp.get("result")
+            if isinstance(r, dict):
+                classification = r.get("classification")
+                if isinstance(classification, dict):
+                    s = classification.get("suggestions")
+                    if isinstance(s, list):
+                        suggestions = s
+            # fallback: top-level suggestions may exist
+            if not suggestions:
+                s2 = resp.get("suggestions")
+                if isinstance(s2, list):
+                    suggestions = s2
+
         top = suggestions[0] if suggestions else None
-        if top:
+        if top and isinstance(top, dict):
+            # common name may be in 'plant_name' or 'common_names' (list)
+            common = None
+            if top.get("plant_name"):
+                common = top.get("plant_name")
+            elif top.get("common_names"):
+                cn = top.get("common_names")
+                if isinstance(cn, list) and len(cn) > 0:
+                    # prefer the first common name only
+                    common = str(cn[0])
+                else:
+                    common = str(cn)
+            # Fallback: sometimes common names are provided inside `details`
+            # (e.g. top['details']['common_names']). Use that when top-level
+            # common name is missing to improve UI localisation.
+            if not common:
+                details = top.get("details")
+                if isinstance(details, dict) and details.get("common_names"):
+                    cn2 = details.get("common_names")
+                    if isinstance(cn2, list) and len(cn2) > 0:
+                        common = str(cn2[0])
+                    else:
+                        common = str(cn2)
+
+            sci = top.get("scientific_name") or top.get("name") or top.get("species")
+            # probability/confidence field names vary
+            conf = None
+            for k in ("probability", "prob", "confidence"):
+                v = top.get(k)
+                if isinstance(v, (int, float)):
+                    conf = float(v)
+                    break
+            # If still missing, check nested result -> probability
+            if conf is None and isinstance(resp.get("result"), dict):
+                maybe = resp["result"].get("classification")
+                if isinstance(maybe, dict):
+                    first = maybe.get("suggestions")
+                    if isinstance(first, list) and len(first) > 0 and isinstance(first[0], dict):
+                        for k in ("probability", "prob", "confidence"):
+                            v = first[0].get(k)
+                            if isinstance(v, (int, float)):
+                                conf = float(v)
+                                break
+
             out.update({
-                "id": top.get("id") or top.get("species_id"),
-                "common_name": top.get("plant_name") or top.get("common_names") or None,
-                "scientific_name": top.get("scientific_name") or top.get("name"),
-                "confidence": top.get("probability") or top.get("confidence") or None,
+                "id": str(top.get("id") or top.get("species_id") or ""),
+                "common_name": common,
+                "scientific_name": str(sci) if sci is not None else None,
+                "confidence": conf,
             })
     except Exception:
         # If normalization fails, we still return raw_response so callers can

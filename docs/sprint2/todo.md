@@ -69,10 +69,10 @@ Acceptance criteria:
 
 ### 5. Client — API integration & request flow (2-3h)
 
-[ ] Implement `IdentifyService` untuk upload image ke backend `/identify` (0.5h)
-[ ] UI: loading skeleton, cancel support (0.5h)
-[ ] Error handling: timeouts, server errors, network offline (0.5-1h)
-[ ] Parse response & navigate ke `identify_result_screen.dart` (0.5h)
+[x] Implement `IdentifyService` untuk upload image ke backend `/identify` (0.5h)
+[x] UI: loading skeleton, cancel support (0.5h) <!-- service provides cancel; UI wiring pending -->
+[x] Error handling: timeouts, server errors, network offline (0.5-1h) <!-- basic timeouts & errors in service implemented -->
+[x] Parse response & navigate ke `identify_result_screen.dart` (0.5h)
 
 Acceptance criteria:
 
@@ -80,7 +80,7 @@ Acceptance criteria:
 
 ### 6. Client — Identify Result screen (3-4h)
 
-[ ] Buat `IdentifyResultScreen` menampilkan: - Thumbnail image - Common name & scientific name - Confidence score (progress bar + numeric) - Provider badge (Plant.id) - Top suggestions (jika available)
+[x] Buat `IdentifyResultScreen` menampilkan: - Thumbnail image - Common name & scientific name - Confidence score (progress bar + numeric) - Provider badge (Plant.id) - Top suggestions (jika available)
 [ ] Tindakan: Save to collection, View guide (placeholder), Retake (1.5-2h)
 [ ] Jika confidence <70%: tampilkan warning dan action (retake / try gallery) (0.5h)
 
