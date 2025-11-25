@@ -19,117 +19,37 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
   bool _expanded = false;
 
   bool _isHealthy() {
-    try {
-      final raw = widget.result.rawResponse;
-      if (raw == null) return true;
-      final res = raw['result'] as Map<String, dynamic>?;
-      if (res == null) return true;
-      final disease = res['disease'] as Map<String, dynamic>?;
-      if (disease != null) {
-        final suggestions = disease['suggestions'] as List<dynamic>?;
-        return suggestions == null || suggestions.isEmpty;
-      }
-      final isHealthy = res['is_healthy'] as Map<String, dynamic>?;
-      if (isHealthy != null) {
-        final prob = isHealthy['probability'];
-        if (prob is num) return prob.toDouble() >= 0.5;
-      }
-      return true;
-    } catch (_) {
-      return true;
+    final h = widget.result.healthAssessment;
+    if (h != null && h['is_healthy'] == false) {
+      return false;
     }
+    return true;
   }
 
   // returns map title -> { 'text': ..., 'citation': ... }
   Map<String, Map<String, String?>> _extractCareFacts() {
-    try {
-      final raw = widget.result.rawResponse;
-      if (raw == null) return {};
-      final res = raw['result'] as Map<String, dynamic>?;
-      if (res == null) return {};
-      final classification = res['classification'] as Map<String, dynamic>?;
-      final suggestions = classification?['suggestions'] as List<dynamic>?;
-      if (suggestions == null || suggestions.isEmpty) return {};
-      final top = suggestions.first as Map<String, dynamic>?;
-      final details = top?['details'] as Map<String, dynamic>?;
-      if (details == null) return {};
+    final care = widget.result.care;
+    if (care == null) return {};
 
-      Map<String, String?> detailTextAndCitation(dynamic v) {
-        if (v == null) return {'text': null, 'citation': null};
-        if (v is String) return {'text': v, 'citation': null};
-        if (v is List) {
-          return {
-            'text': v.map((e) => e.toString()).join(', '),
-            'citation': null,
-          };
-        }
-        if (v is Map) {
-          final text =
-              v['value']?.toString() ??
-              v['text']?.toString() ??
-              v['description']?.toString();
-          final citation = v['citation']?.toString();
-          if (text != null) return {'text': text, 'citation': citation};
-          // Avoid showing raw JSON if keys are missing
-          return {'text': null, 'citation': citation};
-        }
-        return {'text': v.toString(), 'citation': null};
-      }
+    final out = <String, Map<String, String?>>{};
 
-      final wateringRaw = details['watering'];
-      final bestWatering = detailTextAndCitation(details['best_watering']);
-      String? wateringText;
-      // Default to best_watering citation as it is often the source of truth
-      String? wateringCitation = bestWatering['citation'];
-
-      // 1. Try structured watering (Indonesian friendly)
-      if (wateringRaw is Map) {
-        final min = wateringRaw['min'];
-        final max = wateringRaw['max'];
-        if (min != null || max != null) {
-          if (min != null && max != null) {
-            wateringText = 'Kelembaban ideal: $min — $max';
-          } else if (min != null) {
-            wateringText = 'Kelembaban minimal: $min';
-          } else {
-            wateringText = 'Kelembaban hingga: $max';
-          }
-          // If the raw map has a citation, use it
-          if (wateringRaw['citation'] != null) {
-            wateringCitation = wateringRaw['citation'].toString();
-          }
-        }
-      }
-
-      // 2. Fallback to English text if structured failed
-      if (wateringText == null &&
-          bestWatering['text'] != null &&
-          bestWatering['text']!.trim().isNotEmpty) {
-        wateringText = bestWatering['text']!.trim();
-        wateringCitation = bestWatering['citation'];
-      }
-
-      final lightLong = detailTextAndCitation(
-        details['best_light_condition'] ?? details['best_light'],
-      )['text'];
-      String? lightShort;
-      if (lightLong != null) {
-        // Use the full text for the new design, just clean it up
-        lightShort = lightLong.trim();
-      }
-
-      final out = <String, Map<String, String?>>{};
-      if (wateringText != null && wateringText.isNotEmpty) {
-        out['Siram'] = {'text': wateringText, 'citation': wateringCitation};
-      }
-      if (lightShort != null && lightShort.isNotEmpty) {
-        out['Cahaya'] = {'text': lightShort, 'citation': null};
-      }
-      // Propagation removed as requested
-      return out;
-    } catch (_) {
-      return {};
+    if (care['watering'] != null) {
+      final w = care['watering'];
+      out['Siram'] = {
+        'text': w['text']?.toString(),
+        'citation': w['citation']?.toString(),
+      };
     }
+
+    if (care['light'] != null) {
+      final l = care['light'];
+      out['Cahaya'] = {
+        'text': l['text']?.toString(),
+        'citation': l['citation']?.toString(),
+      };
+    }
+
+    return out;
   }
 
   void _showCitationDialog(BuildContext context, String citation) {
@@ -347,13 +267,9 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      // If details contain an object-like description or
-                      // extra citation info, show a more generic title.
-                      (widget
-                                  .result
-                                  .rawResponse?['result']?['classification']?['suggestions']
-                                  ?.first?['details'] !=
-                              null)
+                      (widget.result.description != null ||
+                              (widget.result.care != null &&
+                                  widget.result.care!.isNotEmpty))
                           ? 'Informasi Detail'
                           : 'Cara Menanam & Merawat',
                       style: const TextStyle(
@@ -364,7 +280,7 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                     const SizedBox(height: 8),
                     Builder(
                       builder: (ctx) {
-                        final full = _extractDescription();
+                        final full = widget.result.description;
                         if (full == null || full.trim().isEmpty) {
                           return Text(
                             'Tidak ada deskripsi tersedia.',
@@ -481,30 +397,6 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
         ),
       ),
     );
-  }
-
-  String? _extractDescription() {
-    try {
-      final raw = widget.result.rawResponse;
-      final res = raw?['result'] as Map<String, dynamic>?;
-      final classification = res?['classification'] as Map<String, dynamic>?;
-      final suggestions = classification?['suggestions'] as List<dynamic>?;
-      final top = suggestions?.first as Map<String, dynamic>?;
-      final details = top?['details'] as Map<String, dynamic>?;
-      if (details != null) {
-        final desc =
-            details['description_all'] ??
-            details['description'] ??
-            details['description_gpt'];
-        if (desc is Map) {
-          return desc['value']?.toString() ?? desc['text']?.toString();
-        }
-        return desc?.toString();
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
   }
 
   Widget _careListItem(

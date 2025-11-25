@@ -6,6 +6,9 @@ class IdentifyResult {
   final double? confidence;
   final String provider;
   final Map<String, dynamic>? rawResponse;
+  final Map<String, dynamic>? care;
+  final String? description;
+  final Map<String, dynamic>? healthAssessment;
 
   IdentifyResult({
     this.id,
@@ -14,6 +17,9 @@ class IdentifyResult {
     this.confidence,
     required this.provider,
     this.rawResponse,
+    this.care,
+    this.description,
+    this.healthAssessment,
   });
 
   factory IdentifyResult.fromJson(Map<String, dynamic> json) {
@@ -35,6 +41,13 @@ class IdentifyResult {
       provider: json['provider']?.toString() ?? 'unknown',
       rawResponse: json['raw_response'] is Map
           ? Map<String, dynamic>.from(json['raw_response'])
+          : null,
+      care: json['care'] is Map
+          ? Map<String, dynamic>.from(json['care'])
+          : null,
+      description: json['description']?.toString(),
+      healthAssessment: json['health_assessment'] is Map
+          ? Map<String, dynamic>.from(json['health_assessment'])
           : null,
     );
   }

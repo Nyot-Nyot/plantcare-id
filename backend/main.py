@@ -265,6 +265,23 @@ async def identify(request: Request, image: UploadFile | None = File(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _extract_detail_text_and_citation(v: Any) -> Dict[str, Optional[str]]:
+    """Helper to extract text and citation from various Plant.id detail formats."""
+    if v is None:
+        return {"text": None, "citation": None}
+    if isinstance(v, str):
+        return {"text": v, "citation": None}
+    if isinstance(v, list):
+        return {"text": ", ".join(str(e) for e in v), "citation": None}
+    if isinstance(v, dict):
+        text = v.get("value") or v.get("text") or v.get("description")
+        citation = v.get("citation")
+        if text:
+            return {"text": str(text), "citation": str(citation) if citation else None}
+        return {"text": None, "citation": str(citation) if citation else None}
+    return {"text": str(v), "citation": None}
+
+
 def _normalize_plant_id_response(resp: dict) -> dict:
     """Normalize plant.id response to our minimal schema.
 
@@ -275,10 +292,11 @@ def _normalize_plant_id_response(resp: dict) -> dict:
     try:
         # Plant.id v3 typically nests suggestions at result.classification.suggestions
         suggestions = []
+        result_obj = {}
         if isinstance(resp, dict):
-            r = resp.get("result")
-            if isinstance(r, dict):
-                classification = r.get("classification")
+            result_obj = resp.get("result") or {}
+            if isinstance(result_obj, dict):
+                classification = result_obj.get("classification")
                 if isinstance(classification, dict):
                     s = classification.get("suggestions")
                     if isinstance(s, list):
@@ -305,8 +323,8 @@ def _normalize_plant_id_response(resp: dict) -> dict:
             # Fallback: sometimes common names are provided inside `details`
             # (e.g. top['details']['common_names']). Use that when top-level
             # common name is missing to improve UI localisation.
+            details = top.get("details") or {}
             if not common:
-                details = top.get("details")
                 if isinstance(details, dict) and details.get("common_names"):
                     cn2 = details.get("common_names")
                     if isinstance(cn2, list) and len(cn2) > 0:
@@ -334,11 +352,79 @@ def _normalize_plant_id_response(resp: dict) -> dict:
                                 conf = float(v)
                                 break
 
+            # --- Care & Description Extraction ---
+            care = {}
+
+            # Watering
+            watering_raw = details.get("watering")
+            best_watering = _extract_detail_text_and_citation(details.get("best_watering"))
+            watering_text = None
+            watering_citation = best_watering["citation"]
+
+            # 1. Try structured watering (Indonesian friendly)
+            if isinstance(watering_raw, dict):
+                min_val = watering_raw.get("min")
+                max_val = watering_raw.get("max")
+                if min_val is not None or max_val is not None:
+                    if min_val is not None and max_val is not None:
+                        watering_text = f"Kelembaban ideal: {min_val} — {max_val}"
+                    elif min_val is not None:
+                        watering_text = f"Kelembaban minimal: {min_val}"
+                    else:
+                        watering_text = f"Kelembaban hingga: {max_val}"
+
+                    if watering_raw.get("citation"):
+                        watering_citation = str(watering_raw.get("citation"))
+
+            # 2. Fallback to English text
+            if not watering_text and best_watering["text"]:
+                watering_text = best_watering["text"].strip()
+                watering_citation = best_watering["citation"]
+
+            if watering_text:
+                care["watering"] = {"text": watering_text, "citation": watering_citation}
+
+            # Light
+            light_raw = details.get("best_light_condition") or details.get("best_light")
+            light_info = _extract_detail_text_and_citation(light_raw)
+            if light_info["text"]:
+                care["light"] = {"text": light_info["text"].strip(), "citation": light_info["citation"]}
+
+            # Description
+            desc_raw = details.get("description_all") or details.get("description") or details.get("description_gpt")
+            description = _extract_detail_text_and_citation(desc_raw)["text"]
+
+            # --- Health Assessment Extraction ---
+            health = {"is_healthy": True, "probability": 1.0, "diseases": []}
+            if isinstance(result_obj, dict):
+                is_healthy_obj = result_obj.get("is_healthy")
+                if isinstance(is_healthy_obj, dict):
+                    prob = is_healthy_obj.get("probability")
+                    if isinstance(prob, (int, float)):
+                        health["probability"] = float(prob)
+                        health["is_healthy"] = float(prob) >= 0.5
+
+                disease_obj = result_obj.get("disease")
+                if isinstance(disease_obj, dict):
+                    suggestions = disease_obj.get("suggestions")
+                    if isinstance(suggestions, list):
+                        health["diseases"] = [
+                            {"name": d.get("name"), "probability": d.get("probability")}
+                            for d in suggestions if isinstance(d, dict)
+                        ]
+                        if health["diseases"]:
+                             # If diseases are present, trust the disease model over the binary is_healthy
+                             # usually if disease suggestions exist, it's not healthy
+                             pass
+
             out.update({
                 "id": str(top.get("id") or top.get("species_id") or ""),
                 "common_name": common,
                 "scientific_name": str(sci) if sci is not None else None,
                 "confidence": conf,
+                "care": care,
+                "description": description,
+                "health_assessment": health
             })
     except Exception:
         # If normalization fails, we still return raw_response so callers can
