@@ -72,10 +72,6 @@ class IdentifyService {
         if (isCancelled) return;
         if (status >= 200 && status < 300) {
           final jsonBody = json.decode(respStr) as Map<String, dynamic>;
-          print('DEBUG SERVICE: Response JSON: $jsonBody');
-          print(
-            'DEBUG SERVICE: health_assessment: ${jsonBody['health_assessment']}',
-          );
           completer.complete(IdentifyResult.fromJson(jsonBody));
         } else {
           completer.completeError(

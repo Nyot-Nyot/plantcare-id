@@ -228,10 +228,11 @@ async def identify(request: Request, image: UploadFile | None = File(None), chec
 
             # Prepare base64 payload for plant.id (body-based API)
             b64 = base64.b64encode(content).decode("ascii")
-            payload: dict = {"images": [b64], "similar_images": True}
+            payload: dict = {"images": [b64]}
 
             if check_health:
                 payload["health"] = "all"
+                payload["similar_images"] = True
 
             # include optional coordinates when provided
             try:
@@ -254,9 +255,10 @@ async def identify(request: Request, image: UploadFile | None = File(None), chec
             raise HTTPException(status_code=400, detail="Provide `image` file or `image_url` in JSON body")
 
         cache_key = hashlib.sha256(image_url.encode("utf-8")).hexdigest() + f"_h{check_health}_v2"
-        payload = {"image_url": image_url, "similar_images": True}
+        payload = {"image_url": image_url}
         if check_health:
             payload["health"] = "all"
+            payload["similar_images"] = True
 
         normalized = await _process_and_cache(cache_key, payload)
         return JSONResponse(content=normalized)

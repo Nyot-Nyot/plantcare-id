@@ -141,13 +141,6 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
     final diseases = health['diseases'] as List<dynamic>?;
     if (diseases == null || diseases.isEmpty) return const SizedBox.shrink();
 
-    // Debug: Print to check if similar_images data exists
-    print('DEBUG: Total diseases: ${diseases.length}');
-    for (var d in diseases) {
-      print('DEBUG: Disease name: ${d['name']}');
-      print('DEBUG: Similar images: ${d['similar_images']}');
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -256,12 +249,10 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                               const SizedBox(width: 8),
                           itemBuilder: (context, imgIndex) {
                             final imgData = images[imgIndex];
-                            print('DEBUG: Image data at $imgIndex: $imgData');
                             final imgUrl = (imgData is Map
                                 ? (imgData['url_small'] ?? imgData['url'])
                                       ?.toString()
                                 : null);
-                            print('DEBUG: Image URL: $imgUrl');
                             if (imgUrl == null || imgUrl.isEmpty) {
                               return Container(
                                 width: 80,
@@ -301,7 +292,6 @@ class _IdentifyResultScreenState extends State<IdentifyResultScreen> {
                                       );
                                     },
                                 errorBuilder: (_, error, stack) {
-                                  print('DEBUG: Image load error: $error');
                                   return Container(
                                     width: 80,
                                     height: 80,
