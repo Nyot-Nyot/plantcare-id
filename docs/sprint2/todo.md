@@ -103,8 +103,8 @@ Acceptance criteria:
 
 ### 8. Offline & Caching behavior (2h)
 
-[ ] Cache response hasil identifikasi di client (SQLite/Hive) untuk quick lookup (1h)
-[ ] Jika offline dan cached result tersedia, tampilkan cached result; jika tidak, tampilkan friendly offline message (1h)
+[x] Cache response hasil identifikasi di client (SQLite/Hive) untuk quick lookup (1h)
+[x] Jika offline dan cached result tersedia, tampilkan cached result; jika tidak, tampilkan friendly offline message (1h)
 
 Acceptance criteria:
 

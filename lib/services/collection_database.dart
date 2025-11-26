@@ -7,8 +7,9 @@ import '../models/plant_collection.dart';
 /// Follows offline-first strategy from architect.md
 class CollectionDatabase {
   static const String _databaseName = 'plantcare.db';
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 2;
   static const String _tableName = 'collections';
+  static const String _cacheTableName = 'identify_cache';
 
   // Singleton pattern
   CollectionDatabase._privateConstructor();
@@ -35,6 +36,28 @@ class CollectionDatabase {
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
+  }
+
+  /// Create cache table for identification results (v2 schema)
+  Future<void> _createCacheTableV2(Database db) async {
+    await db.execute('''
+      CREATE TABLE $_cacheTableName (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_hash TEXT NOT NULL UNIQUE,
+        result_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL
+      )
+    ''');
+
+    // Create index on image_hash for fast lookups
+    await db.execute('''
+      CREATE INDEX idx_image_hash ON $_cacheTableName(image_hash)
+    ''');
+
+    // Create index on cached_at for TTL cleanup
+    await db.execute('''
+      CREATE INDEX idx_cached_at ON $_cacheTableName(cached_at)
+    ''');
   }
 
   /// Create tables on first database creation
@@ -65,15 +88,17 @@ class CollectionDatabase {
     await db.execute('''
       CREATE INDEX idx_created_at ON $_tableName(created_at DESC)
     ''');
+
+    // Create cache table for identification results (v2)
+    await _createCacheTableV2(db);
   }
 
   /// Handle database schema upgrades
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Future schema migrations will go here
-    // Example:
-    // if (oldVersion < 2) {
-    //   await db.execute('ALTER TABLE $_tableName ADD COLUMN new_field TEXT');
-    // }
+    // Upgrade from version 1 to 2: Add cache table
+    if (oldVersion < 2) {
+      await _createCacheTableV2(db);
+    }
   }
 
   /// Insert a new plant collection
@@ -225,6 +250,76 @@ class CollectionDatabase {
   Future<int> deleteAll() async {
     final db = await database;
     return await db.delete(_tableName);
+  }
+
+  /// Cache an identification result
+  /// [imageHash] unique identifier for the image (e.g., SHA-256 hash)
+  /// [resultJson] JSON-encoded IdentifyResult
+  Future<int> cacheIdentifyResult(String imageHash, String resultJson) async {
+    final db = await database;
+    return await db.insert(_cacheTableName, {
+      'image_hash': imageHash,
+      'result_json': resultJson,
+      'cached_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Get cached identification result by image hash
+  /// Returns null if not found or expired (TTL 24 hours per architect.md)
+  Future<String?> getCachedResult(String imageHash) async {
+    final db = await database;
+    final ttl = DateTime.now().subtract(const Duration(hours: 24));
+
+    final maps = await db.query(
+      _cacheTableName,
+      where: 'image_hash = ? AND cached_at > ?',
+      whereArgs: [imageHash, ttl.toIso8601String()],
+      limit: 1,
+    );
+
+    if (maps.isEmpty) return null;
+    return maps.first['result_json'] as String?;
+  }
+
+  /// Clean up expired cache entries (older than 24 hours)
+  Future<int> cleanupExpiredCache() async {
+    final db = await database;
+    final ttl = DateTime.now().subtract(const Duration(hours: 24));
+
+    return await db.delete(
+      _cacheTableName,
+      where: 'cached_at < ?',
+      whereArgs: [ttl.toIso8601String()],
+    );
+  }
+
+  /// Get cache statistics (for debugging)
+  Future<Map<String, int>> getCacheStats() async {
+    final db = await database;
+    final total = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM $_cacheTableName',
+    );
+    final totalCount = Sqflite.firstIntValue(total) ?? 0;
+
+    final ttl = DateTime.now().subtract(const Duration(hours: 24));
+    final valid = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM $_cacheTableName WHERE cached_at > ?',
+      [ttl.toIso8601String()],
+    );
+    final validCount = Sqflite.firstIntValue(valid) ?? 0;
+
+    return {
+      'total': totalCount,
+      'valid': validCount,
+      'expired': totalCount - validCount,
+    };
+  }
+
+  /// Clear all cached identification results
+  /// This removes ALL cache entries regardless of age
+  Future<int> clearAllCache() async {
+    final db = await database;
+    return await db.delete(_cacheTableName);
   }
 
   /// Close database connection

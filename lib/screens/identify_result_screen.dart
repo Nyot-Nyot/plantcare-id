@@ -11,8 +11,16 @@ import '../theme/colors.dart';
 class IdentifyResultScreen extends ConsumerStatefulWidget {
   final IdentifyResult result;
   final File? imageFile;
+  final bool fromCache;
+  final bool isOffline;
 
-  const IdentifyResultScreen({super.key, required this.result, this.imageFile});
+  const IdentifyResultScreen({
+    super.key,
+    required this.result,
+    this.imageFile,
+    this.fromCache = false,
+    this.isOffline = false,
+  });
 
   @override
   ConsumerState<IdentifyResultScreen> createState() =>
@@ -441,6 +449,53 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
                       ),
               ),
               const SizedBox(height: 12),
+
+              // Cache/Offline indicator
+              if (widget.fromCache)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: widget.isOffline
+                        ? AppColors.surfaceWarning.withValues(alpha: 0.3)
+                        : AppColors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: widget.isOffline
+                          ? AppColors.warning.withValues(alpha: 0.3)
+                          : AppColors.muted.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        widget.isOffline
+                            ? Icons.cloud_off_outlined
+                            : Icons.history_outlined,
+                        size: 18,
+                        color: widget.isOffline
+                            ? AppColors.warning
+                            : AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          widget.isOffline
+                              ? 'Hasil dari cache (mode offline)'
+                              : 'Hasil dari cache (sudah pernah diidentifikasi)',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: widget.isOffline
+                                    ? AppColors.warning
+                                    : AppColors.textSecondary,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (widget.fromCache) const SizedBox(height: 12),
+
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Row(
