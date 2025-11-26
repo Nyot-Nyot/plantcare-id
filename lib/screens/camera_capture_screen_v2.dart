@@ -24,6 +24,12 @@ class CameraCaptureScreenV2 extends StatefulWidget {
 }
 
 class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
+  // UI strings - extracted for maintainability and future localization
+  static const String msgCachedResultOffline = '📦 Hasil dari cache (offline)';
+  static const String msgCachedResult = '📦 Hasil dari cache';
+  static const String msgOfflineMode =
+      'Mode offline: Sambungkan ke internet untuk identifikasi tanaman baru.';
+
   final ImagePicker _picker = ImagePicker();
   CameraController? _cameraController;
   bool _cameraInitialized = false;
@@ -807,8 +813,8 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
       // Show indicator if result is from cache
       if (cachedResult.fromCache) {
         final indicator = cachedResult.isOffline
-            ? '📦 Hasil dari cache (offline)'
-            : '📦 Hasil dari cache';
+            ? msgCachedResultOffline
+            : msgCachedResult;
         _showMessage(indicator);
       }
 
@@ -828,9 +834,7 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
       // After returning from result screen, close camera screen as user likely completed flow
       if (mounted) Navigator.of(context).maybePop();
     } on OfflineException catch (e) {
-      _showMessage(
-        'Mode offline: ${e.message}\nSambungkan ke internet untuk identifikasi tanaman baru.',
-      );
+      _showMessage('$msgOfflineMode\n${e.message}');
     } catch (e) {
       String msg = 'Upload / identify gagal';
       if (e is StateError) {

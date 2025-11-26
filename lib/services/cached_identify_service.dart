@@ -12,6 +12,12 @@ import 'identify_service.dart';
 /// Wrapper around IdentifyService that adds caching and offline support
 /// Follows offline-first strategy from architect.md with 24-hour TTL
 class CachedIdentifyService {
+  // Error messages - extracted for maintainability and future localization
+  static const String errorNoConnectionNoCache =
+      'No internet connection and no cached result available for this image.';
+  static const String errorNoConnectionNoCacheUrl =
+      'No internet connection and no cached result available for this URL.';
+
   final IdentifyService _identifyService;
   final CollectionDatabase _db;
   final Connectivity _connectivity;
@@ -89,9 +95,7 @@ class CachedIdentifyService {
 
       // 4. No cache or cache expired
       if (!online) {
-        throw OfflineException(
-          'No internet connection and no cached result available for this image.',
-        );
+        throw OfflineException(errorNoConnectionNoCache);
       }
 
       // 5. Make API call (only now after cache miss confirmed)
@@ -163,9 +167,7 @@ class CachedIdentifyService {
 
     // No cache
     if (!online) {
-      throw OfflineException(
-        'No internet connection and no cached result available for this URL.',
-      );
+      throw OfflineException(errorNoConnectionNoCacheUrl);
     }
 
     // Make API call
