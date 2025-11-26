@@ -325,6 +325,13 @@ class CollectionDatabase {
     };
   }
 
+  /// Clear all cached identification results
+  /// This removes ALL cache entries regardless of age
+  Future<int> clearAllCache() async {
+    final db = await database;
+    return await db.delete(_cacheTableName);
+  }
+
   /// Close database connection
   Future<void> close() async {
     final db = await database;

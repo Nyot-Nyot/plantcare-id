@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -105,7 +106,15 @@ class CachedIdentifyService {
       await _db.cacheIdentifyResult(imageHash, json.encode(result.toJson()));
 
       // 7. Clean up expired cache entries (async, don't wait)
-      _db.cleanupExpiredCache().catchError((_) => 0);
+      _db.cleanupExpiredCache().catchError((error, stackTrace) {
+        developer.log(
+          'Failed to cleanup expired cache',
+          name: 'CachedIdentifyService',
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return 0;
+      });
 
       return CachedIdentifyResult(
         result: result,
@@ -163,7 +172,15 @@ class CachedIdentifyService {
     await _db.cacheIdentifyResult(urlHash, json.encode(result.toJson()));
 
     // Clean up expired cache entries
-    _db.cleanupExpiredCache().catchError((_) => 0);
+    _db.cleanupExpiredCache().catchError((error, stackTrace) {
+      developer.log(
+        'Failed to cleanup expired cache',
+        name: 'CachedIdentifyService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return 0;
+    });
 
     return CachedIdentifyResult(
       result: result,
@@ -177,9 +194,38 @@ class CachedIdentifyService {
     return await _db.getCacheStats();
   }
 
-  /// Manually clear all cached results
-  Future<void> clearCache() async {
-    await _db.cleanupExpiredCache();
+  /// Clean up expired cache entries (older than 24 hours)
+  /// This is automatically called after each identification
+  /// but can be manually triggered for maintenance
+  Future<int> cleanupExpiredCache() async {
+    try {
+      return await _db.cleanupExpiredCache();
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to cleanup expired cache',
+        name: 'CachedIdentifyService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
+  /// Clear ALL cached identification results
+  /// This removes all cache entries regardless of age
+  /// Use this for manual cache clearing (e.g., in settings screen)
+  Future<int> clearAllCache() async {
+    try {
+      return await _db.clearAllCache();
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to clear all cache',
+        name: 'CachedIdentifyService',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
   }
 }
 
