@@ -167,6 +167,28 @@ class CollectionDatabase {
     );
   }
 
+  /// Update notes for a collection (efficient single-field update)
+  Future<int> updateNotes(int id, String notes) async {
+    final db = await database;
+    return await db.update(
+      _tableName,
+      {'notes': notes},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Update custom name for a collection (efficient single-field update)
+  Future<int> updateCustomName(int id, String customName) async {
+    final db = await database;
+    return await db.update(
+      _tableName,
+      {'custom_name': customName},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Search collections by name (case-insensitive)
   Future<List<PlantCollection>> search(String query, {String? userId}) async {
     final db = await database;

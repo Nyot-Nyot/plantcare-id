@@ -101,18 +101,12 @@ class CollectionRepository {
 
   /// Update notes for a collection
   Future<void> updateNotes(int id, String notes) async {
-    final collection = await _db.getById(id);
-    if (collection != null) {
-      await _db.update(collection.copyWith(notes: notes));
-    }
+    await _db.updateNotes(id, notes);
   }
 
   /// Update custom name for a collection
   Future<void> updateCustomName(int id, String customName) async {
-    final collection = await _db.getById(id);
-    if (collection != null) {
-      await _db.update(collection.copyWith(customName: customName));
-    }
+    await _db.updateCustomName(id, customName);
   }
 
   /// Update last cared at timestamp
