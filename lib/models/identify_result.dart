@@ -53,4 +53,20 @@ class IdentifyResult {
           : null,
     );
   }
+
+  /// Convert IdentifyResult to JSON map
+  /// Ensures consistent serialization for storage and transmission
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'common_name': commonName,
+      'scientific_name': scientificName,
+      'confidence': confidence,
+      'provider': provider,
+      'raw_response': rawResponse,
+      'care': care,
+      'description': description,
+      'health_assessment': healthAssessment,
+    };
+  }
 }
