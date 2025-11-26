@@ -82,15 +82,15 @@ Tantangan:
 
 ## 5️⃣ Functional Requirements (FRs)
 
-| ID  | Fitur                              | Deskripsi                                                           | Prioritas | Catatan                         |
-| --- | ---------------------------------- | ------------------------------------------------------------------- | --------- | ------------------------------- |
-| FR1 | **Identifikasi Tanaman**           | Mengidentifikasi jenis tanaman dari gambar dengan confidence score. | High      | Basis untuk diagnosis.          |
-| FR2 | **Deteksi Penyakit Kontekstual**   | Mendiagnosis penyakit dari gambar daun/batang/buah.                 | High      | Architect: evaluate API options |
-| FR3 | **Panduan Perawatan Step-by-Step** | Menyediakan panduan visual ≤5 langkah setelah diagnosis.            | Core      | Differentiator utama.           |
-| FR4 | **Koleksi Tanaman Pribadi**        | Menyimpan riwayat identifikasi & perawatan.                         | Medium    | Membentuk habit user.           |
-| FR5 | **Autentikasi Sederhana**          | Login/Registrasi cepat + guest mode.                                | High      | Minim friksi.                   |
-| FR6 | **Notifikasi Perawatan**           | Reminder otomatis berdasarkan jenis tanaman.                        | Medium    | Meningkatkan engagement.        |
-| FR7 | **Offline Mode**                   | Menyimpan data & panduan lokal saat offline.                        | Medium    | Penting untuk petani.           |
+| ID  | Fitur                              | Deskripsi                                                                   | Prioritas | Catatan                            |
+| --- | ---------------------------------- | --------------------------------------------------------------------------- | --------- | ---------------------------------- |
+| FR1 | **Identifikasi Tanaman**           | Mengidentifikasi jenis tanaman dari gambar dengan confidence score.         | High      | Basis untuk diagnosis.             |
+| FR2 | **Health Assessment**              | Mengevaluasi kondisi kesehatan tanaman dan mendeteksi penyakit dari gambar. | High      | Plant.id API with health parameter |
+| FR3 | **Panduan Perawatan Step-by-Step** | Menyediakan panduan visual ≤5 langkah setelah diagnosis.                    | Core      | Differentiator utama.              |
+| FR4 | **Koleksi Tanaman Pribadi**        | Menyimpan riwayat identifikasi & perawatan.                                 | Medium    | Membentuk habit user.              |
+| FR5 | **Autentikasi Sederhana**          | Login/Registrasi cepat + guest mode.                                        | High      | Minim friksi.                      |
+| FR6 | **Notifikasi Perawatan**           | Reminder otomatis berdasarkan jenis tanaman.                                | Medium    | Meningkatkan engagement.           |
+| FR7 | **Offline Mode**                   | Menyimpan data & panduan lokal saat offline.                                | Medium    | Penting untuk petani.              |
 
 ---
 
@@ -130,17 +130,25 @@ Epics mengelompokkan fitur besar (FRs) menjadi area pengembangan, kemudian dijab
 
 ---
 
-### Epic 2: Disease Detection (FR2)
+### Epic 2: Health Assessment (FR2)
 
-> Pengguna dapat mendiagnosis penyakit tanaman berdasarkan foto bagian yang sakit.
+> Pengguna dapat mendiagnosis kondisi kesehatan tanaman berdasarkan foto bagian yang sakit.
 
 **User Stories:**
 
-1. Sebagai **pengguna**, saya ingin **mengambil foto bagian tanaman yang rusak** agar sistem bisa menganalisis penyakitnya.
+1. Sebagai **pengguna**, saya ingin **mengambil foto bagian tanaman yang rusak** agar sistem bisa menganalisis kondisi kesehatannya.
 
 2. Sebagai **pengguna**, saya ingin **melihat deskripsi penyakit dalam bahasa sederhana** agar mudah dipahami.
 
 3. Sebagai **pengguna**, saya ingin **melihat penyebab umum & tingkat keparahan penyakit** agar saya tahu tindakan yang tepat.
+
+4. Sebagai **pengguna**, saya ingin **melihat status kesehatan tanaman (sehat/tidak sehat)** dengan probabilitas yang jelas.
+
+**Technical Notes:**
+
+-   Menggunakan Plant.id API dengan parameter `health: "all"` atau `health: "auto"`
+-   Response mencakup `is_healthy` (binary + probability) dan `disease suggestions`
+-   Health assessment memerlukan 2 credits (atau 1-2 dengan mode "auto")
 
 ---
 

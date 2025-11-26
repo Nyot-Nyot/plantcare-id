@@ -57,15 +57,18 @@ Acceptance criteria:
 
 ### 4. Backend — Orchestrator endpoint for Plant.id (4-6h)
 
-[x] Tambah endpoint POST `/identify` di `backend/main.py` atau modul orchestrator: - Terima multipart image atau image_url - Return JSON terstruktur (id, common_name, scientific_name, confidence, provider, raw_response)
-[x] Integrasi ke Plant.id API; implement retry/backoff and clear error handling jika Plant.id gagal (2-3h)
+[x] Tambah endpoint POST `/identify` di `backend/main.py` atau modul orchestrator: - Terima multipart image atau image_url - Return JSON terstruktur (id, common_name, scientific_name, confidence, provider, care, description, health_assessment, raw_response) - Normalize Plant.id API response untuk konsistensi client
+[x] Integrasi ke Plant.id API v3; implement retry/backoff and clear error handling jika Plant.id gagal (2-3h)
 [x] Cache hasil identifikasi (Redis/in-memory) dengan TTL 24 jam (0.5-1h)
 [x] Tambah logging, metrics, error handling (0.5-1h)
 
 Acceptance criteria:
 
--   Endpoint mengembalikan structured JSON; menggunakan Plant.id sebagai sumber tunggal; cached results bekerja; error handling & retry/backoff tersedia.
--   Response model includes a single `provider` string (e.g. "plant.id") for provenance instead of a `sources` array.
+-   Endpoint mengembalikan structured JSON yang normalized dari Plant.id API response
+-   Response includes: `id`, `common_name`, `scientific_name`, `confidence`, `provider` (string: "plant.id"), `description`, `care` (watering + light), `health_assessment` (when requested), `raw_response` (original Plant.id response)
+-   Health assessment parameter `check_health` forwards to Plant.id as `health: "all"`
+-   Cached results bekerja; error handling & retry/backoff tersedia
+-   Plant.id API response structure: `access_token`, `result->classification->suggestions`, `result->is_healthy`, `result->disease->suggestions`
 
 ### 5. Client — API integration & request flow (2-3h)
 

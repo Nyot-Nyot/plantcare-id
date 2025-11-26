@@ -365,43 +365,151 @@ Endpoints kunci (disingkat):
 
 ## API Contracts (Extended)
 
-### POST /api/v1/identify
+### External API: Plant.id v3
+
+**Endpoint:** `https://plant.id/api/v3/identification`
+
+**Authentication:** API Key via `Api-Key` header or `api_key` in request body
+
+**Request Parameters:**
+
+-   `images` (required): array of base64-encoded images or public URLs
+-   `latitude` (optional, float): geographic coordinate for better accuracy
+-   `longitude` (optional, float): geographic coordinate for better accuracy
+-   `similar_images` (optional, boolean): if true, returns similar images for each suggestion
+-   `custom_id` (optional, int): unique identifier for tracking
+-   `datetime` (optional, string): ISO format date when images were taken (e.g., "2023-06-22")
+-   `health` (optional, string): health assessment mode
+    -   `only`: response contains only health assessment
+    -   `auto`: health assessment included only if plant is diseased (2 credits if returned, 1 if not)
+    -   `all`: both species classification and health assessment (2 credits total)
+-   `classification_level` (optional, string): taxonomy level
+    -   `species` (default): genus and species
+    -   `all`: genus, species, and infraspecies
+    -   `genus`: only genus level
+-   `details` (optional, string): comma-separated list of additional information
+    -   Available: `common_names`, `url`, `description`, `description_gpt`, `description_all`, `taxonomy`, `rank`, `gbif_id`, `inaturalist_id`, `image`, `images`, `synonyms`, `edible_parts`, `propagation_methods`, `watering`, `best_watering`, `best_light_condition`, `best_soil_type`, `toxicity`, `cultural_significance`
+-   `language` (optional, string): ISO 639-1 two-letter code (default: `en`)
+    -   Supported: `en`, `de`, `cs`, `es`, `fr`, `it`, `nl`, `pl`, `sv`, `zh`, `zh-hant`, `da`, `tr`, `hi`, `ar`, `pt-BR`, `ko`, `id`
+
+**Response Structure:**
+
+```json
+{
+	"access_token": "unique_identification_id",
+	"result": {
+		"is_plant": {
+			"binary": true,
+			"probability": 0.95
+		},
+		"classification": {
+			"suggestions": [
+				{
+					"id": "plant_id_123",
+					"name": "Scientific Name",
+					"probability": 0.92,
+					"similar_images": [],
+					"details": {
+						"common_names": ["Common Name"],
+						"description": "Plant description",
+						"watering": { "min": 3, "max": 5 },
+						"best_watering": "Watering instructions...",
+						"best_light_condition": "Light requirements..."
+					}
+				}
+			]
+		},
+		"is_healthy": {
+			"binary": true,
+			"probability": 0.85
+		},
+		"disease": {
+			"suggestions": [
+				{
+					"id": "disease_id_123",
+					"name": "Disease Name",
+					"probability": 0.78,
+					"similar_images": [],
+					"details": {
+						"local_name": "Localized name",
+						"description": "Disease description",
+						"treatment": {
+							"biological": ["Treatment 1"],
+							"chemical": ["Treatment 2"],
+							"prevention": ["Prevention steps"]
+						}
+					}
+				}
+			]
+		}
+	}
+}
+```
+
+**Credit Costs:**
+
+-   Basic identification (without health): **1 credit**
+-   With health assessment (`health: "all"`): **2 credits**
+-   Auto health (`health: "auto"`): **1-2 credits** (depends on result)
+
+**Error Responses:**
+
+-   `400`: Invalid input data
+-   `401`: Invalid API key
+-   `404`: Object not found
+-   `429`: No enough credits
+-   `500`: Server error
+
+### Backend Orchestrator: POST /identify
+
+Our backend orchestrator endpoint that wraps Plant.id API.
 
 _Request (multipart/form-data):_
 
--   image (file)
-
--   user_id (optional)
-
--   focus_area (optional)
+-   `image` (file, required): image file to identify
+-   `check_health` (boolean, optional): whether to include health assessment (default: false)
+-   `latitude` (float, optional): geographic coordinate
+-   `longitude` (float, optional): geographic coordinate
 
 _Response 200:_
 
-```
+```json
 {
-  "status":"ok",
-  "plant":{
-    "catalog_id":"plant_123",
-    "common_name":"Puring",
-    "scientific_name":"Euphorbia pulcherrima",
-    "confidence":0.92,
-    "health_status":"healthy",
-    "suggested_guide_id":"guide_45"
-  },
-  "notes":{
-    "confidence_label":"High",
-    "explanation":"Matched leaves pattern with 92% similarity"
-  }
+	"id": "plant_id_from_api",
+	"common_name": "Puring",
+	"scientific_name": "Codiaeum variegatum",
+	"confidence": 0.92,
+	"provider": "plant.id",
+	"description": "Plant description...",
+	"care": {
+		"watering": {
+			"text": "Kelembaban ideal: 3 — 5",
+			"citation": "source"
+		},
+		"light": {
+			"text": "Light requirements...",
+			"citation": "source"
+		}
+	},
+	"health_assessment": {
+		"is_healthy": true,
+		"diseases": [
+			{
+				"name": "Disease name",
+				"probability": 0.15,
+				"description": "Disease info"
+			}
+		]
+	},
+	"raw_response": {}
 }
 ```
 
 _Error handling:_
 
--   400: invalid image
-
--   503: external service unavailable
-
--   429: rate limit (include `retry_after` header)
+-   400: invalid image or empty file
+-   500: external service unavailable
+-   503: Plant.id API error
 
 ### GET /api/v1/guide/{id}
 
