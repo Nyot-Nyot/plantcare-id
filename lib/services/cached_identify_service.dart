@@ -34,10 +34,10 @@ class CachedIdentifyService {
   }
 
   /// Generate a unique hash for an image file
-  /// Uses SHA-256 hash of file contents
+  /// Uses SHA-256 hash of file contents with streaming to avoid loading entire file in memory
   Future<String> _computeImageHash(File image) async {
-    final bytes = await image.readAsBytes();
-    final digest = sha256.convert(bytes);
+    final reader = image.openRead();
+    final digest = await sha256.bind(reader).first;
     return digest.toString();
   }
 
