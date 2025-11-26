@@ -10,8 +10,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 
+import '../services/cached_identify_service.dart';
 import '../services/camera_service.dart';
-import '../services/identify_service.dart';
 import 'identify_result_screen.dart';
 
 /// Full-screen camera capture screen (v2).
@@ -767,7 +767,7 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
     );
   }
 
-  UploadTask? _currentUploadTask;
+  CachedUploadTask? _currentUploadTask;
 
   void _cancelUpload() {
     try {
@@ -779,7 +779,7 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
   Future<void> _submitPickedFile(File file) async {
     if (!mounted) return;
     setState(() => _loading = true);
-    final svc = IdentifyService();
+    final svc = CachedIdentifyService();
     // Attempt to capture current device location. If unavailable or denied,
     // we proceed without location (server will still accept the image).
     double? lat;
@@ -801,18 +801,36 @@ class _CameraCaptureScreenV2State extends State<CameraCaptureScreenV2> {
       checkHealth: widget.checkHealth,
     );
     try {
-      final result = await _currentUploadTask!.future;
+      final cachedResult = await _currentUploadTask!.future;
       if (!mounted) return;
+
+      // Show indicator if result is from cache
+      if (cachedResult.fromCache) {
+        final indicator = cachedResult.isOffline
+            ? '📦 Hasil dari cache (offline)'
+            : '📦 Hasil dari cache';
+        _showMessage(indicator);
+      }
+
       // preserve temp file since user used it
       _preserveTempOnPop = true;
       // Navigate to result screen
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => IdentifyResultScreen(result: result, imageFile: file),
+          builder: (_) => IdentifyResultScreen(
+            result: cachedResult.result,
+            imageFile: file,
+            fromCache: cachedResult.fromCache,
+            isOffline: cachedResult.isOffline,
+          ),
         ),
       );
       // After returning from result screen, close camera screen as user likely completed flow
       if (mounted) Navigator.of(context).maybePop();
+    } on OfflineException catch (e) {
+      _showMessage(
+        'Mode offline: ${e.message}\nSambungkan ke internet untuk identifikasi tanaman baru.',
+      );
     } catch (e) {
       String msg = 'Upload / identify gagal';
       if (e is StateError) {
