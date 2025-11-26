@@ -773,7 +773,7 @@ This safety pattern is now consistently applied across the codebase:
 Future<void> _saveToCollection() async {
   // Capture BEFORE await
   final messenger = ScaffoldMessenger.of(context);
-  
+
   try {
     await saveOperation();
     // Use captured messenger (safe)
@@ -790,9 +790,9 @@ Future<void> _saveToCollection() async {
 Future<void> _handleDelete(PlantCollection collection) async {
   // Capture BEFORE any async operations
   final messenger = ScaffoldMessenger.of(context);
-  
+
   final confirm = await showDialog<bool>(...);
-  
+
   if (confirm == true) {
     try {
       await ref.read(provider).deleteCollection(id);
@@ -811,12 +811,12 @@ Future<void> _handleDelete(PlantCollection collection) async {
 void _navigateToDetail(PlantCollection collection) {
   // Capture BEFORE operations that might throw
   final messenger = ScaffoldMessenger.of(context);
-  
+
   if (collection.data == null) {
     messenger.showSnackBar(noDataMessage);
     return;
   }
-  
+
   try {
     final result = parseData(collection);
     // Context still valid for navigation within same function

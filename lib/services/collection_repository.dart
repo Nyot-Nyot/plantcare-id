@@ -36,16 +36,10 @@ class CollectionRepository {
       scientificName: result.scientificName,
       imageUrl: savedImagePath,
       notes: notes,
-      identificationData: PlantCollection.encodeIdentificationData({
-        'id': result.id,
-        'common_name': result.commonName,
-        'scientific_name': result.scientificName,
-        'confidence': result.confidence,
-        'provider': result.provider,
-        'care': result.care,
-        'description': result.description,
-        'health_assessment': result.healthAssessment,
-      }),
+      // Use result.toJson() for consistent serialization
+      identificationData: PlantCollection.encodeIdentificationData(
+        result.toJson(),
+      ),
       createdAt: DateTime.now(),
       confidence: result.confidence,
       synced: false,

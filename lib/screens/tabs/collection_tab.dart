@@ -259,7 +259,7 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
   Future<void> _handleDelete(PlantCollection collection) async {
     // Capture ScaffoldMessenger before any async operations
     final messenger = ScaffoldMessenger.of(context);
-    
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -287,7 +287,7 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
         await ref
             .read(collectionProvider.notifier)
             .deleteCollection(collection.id!);
-        
+
         // Use captured messenger instead of context
         messenger.showSnackBar(
           const SnackBar(
@@ -311,7 +311,7 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
   void _navigateToDetail(PlantCollection collection) {
     // Capture messenger before any operations that might fail
     final messenger = ScaffoldMessenger.of(context);
-    
+
     // Decode identificationData back to IdentifyResult
     if (collection.identificationData == null) {
       messenger.showSnackBar(
