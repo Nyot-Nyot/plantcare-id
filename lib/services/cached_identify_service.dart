@@ -12,6 +12,12 @@ import 'identify_service.dart';
 /// Wrapper around IdentifyService that adds caching and offline support
 /// Follows offline-first strategy from architect.md with 24-hour TTL
 class CachedIdentifyService {
+  // Error messages - extracted for maintainability and future localization
+  static const String errorNoConnectionNoCache =
+      'No internet connection and no cached result available for this image.';
+  static const String errorNoConnectionNoCacheUrl =
+      'No internet connection and no cached result available for this URL.';
+
   final IdentifyService _identifyService;
   final CollectionDatabase _db;
   final Connectivity _connectivity;
@@ -55,13 +61,8 @@ class CachedIdentifyService {
     double? longitude,
     bool checkHealth = false,
   }) {
-    final task = _identifyService.uploadImage(
-      image,
-      timeout: timeout,
-      latitude: latitude,
-      longitude: longitude,
-      checkHealth: checkHealth,
-    );
+    // Initialize task as null - will only create if needed
+    UploadTask? task;
 
     Future<CachedIdentifyResult> wrappedFuture() async {
       // 1. Compute image hash
@@ -94,13 +95,18 @@ class CachedIdentifyService {
 
       // 4. No cache or cache expired
       if (!online) {
-        throw OfflineException(
-          'No internet connection and no cached result available for this image.',
-        );
+        throw OfflineException(errorNoConnectionNoCache);
       }
 
-      // 5. Make API call
-      final result = await task.future;
+      // 5. Make API call (only now after cache miss confirmed)
+      task = _identifyService.uploadImage(
+        image,
+        timeout: timeout,
+        latitude: latitude,
+        longitude: longitude,
+        checkHealth: checkHealth,
+      );
+      final result = await task!.future;
 
       // 6. Cache the result
       await _db.cacheIdentifyResult(imageHash, json.encode(result.toJson()));
@@ -123,7 +129,13 @@ class CachedIdentifyService {
       );
     }
 
-    return CachedUploadTask(future: wrappedFuture(), cancel: task.cancel);
+    return CachedUploadTask(
+      future: wrappedFuture(),
+      cancel: () {
+        // Only cancel if task was actually created
+        task?.cancel();
+      },
+    );
   }
 
   /// Identify by URL with caching support
@@ -155,9 +167,7 @@ class CachedIdentifyService {
 
     // No cache
     if (!online) {
-      throw OfflineException(
-        'No internet connection and no cached result available for this URL.',
-      );
+      throw OfflineException(errorNoConnectionNoCacheUrl);
     }
 
     // Make API call
