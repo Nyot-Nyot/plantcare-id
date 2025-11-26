@@ -38,6 +38,28 @@ class CollectionDatabase {
     );
   }
 
+  /// Create cache table for identification results (v2 schema)
+  Future<void> _createCacheTableV2(Database db) async {
+    await db.execute('''
+      CREATE TABLE $_cacheTableName (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_hash TEXT NOT NULL UNIQUE,
+        result_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL
+      )
+    ''');
+
+    // Create index on image_hash for fast lookups
+    await db.execute('''
+      CREATE INDEX idx_image_hash ON $_cacheTableName(image_hash)
+    ''');
+
+    // Create index on cached_at for TTL cleanup
+    await db.execute('''
+      CREATE INDEX idx_cached_at ON $_cacheTableName(cached_at)
+    ''');
+  }
+
   /// Create tables on first database creation
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
@@ -67,47 +89,15 @@ class CollectionDatabase {
       CREATE INDEX idx_created_at ON $_tableName(created_at DESC)
     ''');
 
-    // Create cache table for identification results
-    await db.execute('''
-      CREATE TABLE $_cacheTableName (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        image_hash TEXT NOT NULL UNIQUE,
-        result_json TEXT NOT NULL,
-        cached_at TEXT NOT NULL
-      )
-    ''');
-
-    // Create index on image_hash for fast lookups
-    await db.execute('''
-      CREATE INDEX idx_image_hash ON $_cacheTableName(image_hash)
-    ''');
-
-    // Create index on cached_at for TTL cleanup
-    await db.execute('''
-      CREATE INDEX idx_cached_at ON $_cacheTableName(cached_at)
-    ''');
+    // Create cache table for identification results (v2)
+    await _createCacheTableV2(db);
   }
 
   /// Handle database schema upgrades
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // Upgrade from version 1 to 2: Add cache table
     if (oldVersion < 2) {
-      await db.execute('''
-        CREATE TABLE $_cacheTableName (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          image_hash TEXT NOT NULL UNIQUE,
-          result_json TEXT NOT NULL,
-          cached_at TEXT NOT NULL
-        )
-      ''');
-
-      await db.execute('''
-        CREATE INDEX idx_image_hash ON $_cacheTableName(image_hash)
-      ''');
-
-      await db.execute('''
-        CREATE INDEX idx_cached_at ON $_cacheTableName(cached_at)
-      ''');
+      await _createCacheTableV2(db);
     }
   }
 
