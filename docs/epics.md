@@ -10,7 +10,7 @@
 
 -   [Pendahuluan](#pendahuluan)
 -   [Epic 1: Plant Identification](#epic-1-plant-identification)
--   [Epic 2: Disease Detection](#epic-2-disease-detection)
+-   [Epic 2: Health Assessment](#epic-2-health-assessment)
 -   [Epic 3: Treatment Guidance](#epic-3-treatment-guidance)
 -   [Epic 4: Personal Plant Collection](#epic-4-personal-plant-collection)
 -   [Epic 5: Authentication & Access](#epic-5-authentication--access)
@@ -47,21 +47,22 @@ Epics ini mendukung pengembangan MVP berbasis Agile (Scrum/Kanban), dengan fokus
 
 ---
 
-## Epic 2: Disease Detection
+## Epic 2: Health Assessment
 
-**Deskripsi:** Pengguna dapat mendiagnosis penyakit tanaman berdasarkan foto bagian yang sakit.
+**Deskripsi:** Pengguna dapat melakukan health assessment tanaman berdasarkan foto untuk mendeteksi masalah kesehatan.
 **FR Terkait:** FR2
 **Prioritas:** High
-**Acceptance Criteria:** Diagnosis akurat, severity levels, fallback API.
+**Acceptance Criteria:** Health status akurat (is_healthy boolean + probability), disease suggestions dengan treatment details, severity levels, fallback API.
 
 **User Stories:**
 
-1. Sebagai **pengguna**, saya ingin **mengambil foto bagian tanaman yang rusak** agar sistem bisa menganalisis penyakitnya.
-2. Sebagai **pengguna**, saya ingin **melihat deskripsi penyakit dalam bahasa sederhana** agar mudah dipahami.
-3. Sebagai **pengguna**, saya ingin **melihat penyebab umum & tingkat keparahan penyakit** agar saya tahu tindakan yang tepat.
+1. Sebagai **pengguna**, saya ingin **mengambil foto tanaman** agar sistem bisa menganalisis kondisi kesehatannya.
+2. Sebagai **pengguna**, saya ingin **melihat status kesehatan tanaman (sehat/tidak sehat)** dengan tingkat kepercayaan.
+3. Sebagai **pengguna**, saya ingin **melihat daftar penyakit yang terdeteksi** jika tanaman tidak sehat, beserta deskripsi dalam bahasa sederhana.
+4. Sebagai **pengguna**, saya ingin **melihat penyebab umum & tingkat keparahan penyakit** agar saya tahu tindakan yang tepat.
 
-**Technical Notes:** Plant.id API untuk disease, image focus area.
-**UI/UX Notes:** Similar to identification, with health status badge.
+**Technical Notes:** Plant.id API v3 dengan parameter health (only/auto/all), biaya kredit 1-2 tergantung mode, response includes is_healthy + disease->suggestions.
+**UI/UX Notes:** Similar to identification, with health status badge (sehat/tidak sehat), disease list if unhealthy.
 
 ---
 

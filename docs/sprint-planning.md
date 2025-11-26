@@ -110,7 +110,7 @@ Sprint planning ini dirancang berdasarkan [Timeline di Product Brief](product-br
 **Tasks:**
 
 -   Offline-first: Cache guides, sync protocol.
--   Disease detection (similar to identification).
+-   Health assessment (similar to identification, with health parameter).
 -   Error states, empty states.
 -   Performance optimization, accessibility checks.
 -   QA: Automated tests, usability testing.
