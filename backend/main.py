@@ -81,7 +81,7 @@ async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
     if PLANT_ID_AUTH_MODE != "body" and PLANT_ID_API_KEY:
         headers["Api-Key"] = PLANT_ID_API_KEY
-    
+
     attempt = 0
     backoff = 0.5
     last_exc: Optional[Exception] = None
@@ -166,7 +166,44 @@ async def health_check():
 
 @app.post("/identify")
 async def identify(request: Request, image: UploadFile | None = File(None), check_health: bool = False):
-    """Identify endpoint for the app orchestrator."""
+    """Identify endpoint for the app orchestrator.
+
+    This endpoint accepts plant images in two formats and returns structured identification data.
+
+    **Request Formats:**
+    1. **Multipart form upload** (preferred for mobile apps):
+       - Field `image`: The plant image file
+       - Field `latitude` (optional): GPS latitude coordinate
+       - Field `longitude` (optional): GPS longitude coordinate
+       - Field `check_health` (optional): Boolean to enable health assessment
+
+    2. **JSON body** (for URL-based identification):
+       - `image_url`: URL of the plant image
+       - `check_health` (optional): Boolean to enable health assessment
+
+    **Response Structure:**
+    Returns structured JSON with the following fields:
+    - `id`: Unique identifier for the identification result
+    - `common_name`: Common name(s) of the identified plant
+    - `scientific_name`: Scientific/botanical name of the plant
+    - `confidence`: Confidence score of the identification (0-1)
+    - `provider`: Source of the identification (e.g., "plant.id")
+    - `raw_response`: Original response from the plant.id API (for debugging)
+    - `suggestions`: List of alternative plant suggestions with details including:
+        - taxonomy, common_names, edible_parts, watering, propagation_methods, etc.
+    - `health` (if check_health=True): Health assessment data including:
+        - is_healthy, diseases, is_plant, etc.
+
+    **Query Parameters:**
+    - `check_health`: Boolean flag to enable plant health assessment (default: False)
+
+    **Caching:**
+    Results are cached by image content hash to improve performance and reduce API calls.
+
+    **Error Responses:**
+    - 400: Empty file or missing image_url
+    - 500: Server error during identification process
+    """
     app.state.metrics["requests"] += 1
 
     try:
@@ -488,9 +525,9 @@ async def save_guide_progress(request: Request):
         for field in required_fields:
             if field not in data:
                 raise HTTPException(status_code=400, detail=f"Missing field: {field}")
-        
+
         return {
-            "status": "success", 
+            "status": "success",
             "message": "Progress saved",
             "data": {
                 **data,
