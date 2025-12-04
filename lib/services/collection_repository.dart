@@ -153,58 +153,38 @@ class CollectionRepository {
     }
   }
 
+  /// Helper method to sync collection updates to Supabase
+  /// Retrieves the updated collection and syncs it if sync service is available
+  Future<void> _syncCollectionUpdate(int id, String operationName) async {
+    if (!isSyncAvailable) return;
+
+    try {
+      final collection = await _db.getById(id);
+      if (collection != null) {
+        await _syncService!.syncCollection(collection);
+        await _db.markAsSynced(id);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to sync $operationName: $e');
+    }
+  }
+
   /// Update notes for a collection
   Future<void> updateNotes(int id, String notes) async {
     await _db.updateNotes(id, notes);
-    
-    // Try to sync to Supabase
-    if (isSyncAvailable) {
-      try {
-        final collection = await _db.getById(id);
-        if (collection != null) {
-          await _syncService!.syncCollection(collection);
-          await _db.markAsSynced(id);
-        }
-      } catch (e) {
-  debugPrint('⚠️ Failed to sync notes update: $e');
-      }
-    }
+    await _syncCollectionUpdate(id, 'notes update');
   }
 
   /// Update custom name for a collection
   Future<void> updateCustomName(int id, String customName) async {
     await _db.updateCustomName(id, customName);
-    
-    // Try to sync to Supabase
-    if (isSyncAvailable) {
-      try {
-        final collection = await _db.getById(id);
-        if (collection != null) {
-          await _syncService!.syncCollection(collection);
-          await _db.markAsSynced(id);
-        }
-      } catch (e) {
-  debugPrint('⚠️ Failed to sync name update: $e');
-      }
-    }
+    await _syncCollectionUpdate(id, 'name update');
   }
 
   /// Update last cared at timestamp
   Future<void> updateLastCaredAt(int id) async {
     await _db.updateLastCaredAt(id, DateTime.now());
-    
-    // Try to sync to Supabase
-    if (isSyncAvailable) {
-      try {
-        final collection = await _db.getById(id);
-        if (collection != null) {
-          await _syncService!.syncCollection(collection);
-          await _db.markAsSynced(id);
-        }
-      } catch (e) {
-  debugPrint('⚠️ Failed to sync last cared update: $e');
-      }
-    }
+    await _syncCollectionUpdate(id, 'last cared update');
   }
 
   /// Search collections

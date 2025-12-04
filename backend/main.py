@@ -157,7 +157,7 @@ async def _maybe_init_redis_cache():
         cache = RedisCache(r)
         logger.info("Using Redis cache at %s", REDIS_URL)
     except (ConnectionError, TimeoutError, OSError) as e:
-        logger.warning("Failed to connect to Redis at %s: %s. Falling back to SimpleCache", 
+        logger.warning("Failed to connect to Redis at %s: %s. Falling back to SimpleCache",
                       REDIS_URL, e, exc_info=True)
 
 
