@@ -59,7 +59,7 @@ android {
                 println("WARNING: Using debug signing for release build. Create key.properties for production.")
                 signingConfigs.getByName("debug")
             }
-            
+
             // Enable code shrinking and obfuscation for release builds
             isMinifyEnabled = true
             isShrinkResources = true
