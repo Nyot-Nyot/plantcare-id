@@ -134,7 +134,8 @@ class RedisCache:
             if isinstance(v, bytes):
                 v = v.decode("utf-8")
             return json.loads(v)
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as e:
+            logger.warning("Failed to decode cached value for key %s: %s", key, e, exc_info=True)
             return None
 
     async def set(self, key: str, value: Any, ttl: int | None = None):
@@ -155,8 +156,9 @@ async def _maybe_init_redis_cache():
         await r.ping()
         cache = RedisCache(r)
         logger.info("Using Redis cache at %s", REDIS_URL)
-    except Exception as e:
-        logger.warning("Failed to initialize Redis at %s: %s. Falling back to SimpleCache", REDIS_URL, e)
+    except (ConnectionError, TimeoutError, OSError) as e:
+        logger.warning("Failed to connect to Redis at %s: %s. Falling back to SimpleCache", 
+                      REDIS_URL, e, exc_info=True)
 
 
 @app.get("/health")
@@ -253,10 +255,19 @@ async def identify(request: Request, image: UploadFile | None = File(None), chec
     except HTTPException:
         app.state.metrics["failures"] += 1
         raise
-    except Exception as e:
+    except (json.JSONDecodeError, KeyError) as e:
         app.state.metrics["failures"] += 1
-        logger.exception("Identify failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Invalid request format in /identify: %s", e, exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Invalid request format: {str(e)}")
+    except (httpx.HTTPError, httpx.TimeoutException) as e:
+        app.state.metrics["failures"] += 1
+        logger.error("Network error calling Plant.id API: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail="Plant identification service unavailable")
+    except Exception as e:
+        # Catch unexpected errors but log with full traceback
+        app.state.metrics["failures"] += 1
+        logger.exception("Unexpected error in /identify endpoint: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 def _extract_detail_text_and_citation(v: Any) -> Dict[str, Optional[str]]:
@@ -447,8 +458,8 @@ def _normalize_plant_id_response(resp: dict) -> dict:
                 "description": description,
                 "health_assessment": health
             })
-    except Exception:
-        logger.warning("Failed to normalize Plant.id response", exc_info=True)
+    except (KeyError, AttributeError, TypeError, ValueError) as e:
+        logger.warning("Failed to normalize Plant.id response: %s", e, exc_info=True)
     return out
 
 
@@ -535,10 +546,15 @@ async def save_guide_progress(request: Request):
                 "id": f"progress_{int(time.time())}"
             }
         }
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except json.JSONDecodeError as e:
+        logger.error("Invalid JSON in progress update: %s", e, exc_info=True)
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
+    except KeyError as e:
+        logger.error("Missing required field in progress update: %s", e, exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Missing required field: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Unexpected error in progress update: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/guides/disease/{disease_name}")
