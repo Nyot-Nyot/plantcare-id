@@ -38,4 +38,6 @@ class AppColors {
   ); // Added for low confidence warning
   static const surfaceError = Color(0xFFFDEEEE);
   static const imageBg = Color(0xFFF2F4F6);
+
+  static const Color success = Color(0xFF27AE60); // Hijau
 }

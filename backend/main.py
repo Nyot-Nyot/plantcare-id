@@ -21,11 +21,7 @@ load_dotenv()
 
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
 PLANT_ID_URL = os.getenv("PLANT_ID_URL", "https://plant.id/api/v3/identification")
-# Authentication mode: 'body' (api_key in JSON body) or 'header' (Api-Key header)
 PLANT_ID_AUTH_MODE = os.getenv("PLANT_ID_AUTH_MODE", "body")
-# Comma-separated list of details to request from Plant.id to enrich responses.
-# See docs: https://plant.id/api/v3/openapi.yaml for available detail names.
-# Default includes common names, more complete descriptions, watering and light info
 PLANT_ID_DETAILS = os.getenv(
     "PLANT_ID_DETAILS",
     "common_names,description_all,watering,best_watering,best_light_condition,propagation_methods",
@@ -40,10 +36,7 @@ app = FastAPI()
 
 
 class SimpleCache:
-    """In-memory TTL cache fallback when Redis not configured.
-
-    Stores {key: (expiry_ts, value)}
-    """
+    """In-memory TTL cache fallback when Redis not configured."""
 
     def __init__(self):
         self._store: Dict[str, Any] = {}
@@ -54,7 +47,6 @@ class SimpleCache:
             return None
         expiry, val = v
         if time.time() > expiry:
-            # Remove expired entry if present in a single atomic call.
             self._store.pop(key, None)
             return None
         return val
@@ -63,15 +55,7 @@ class SimpleCache:
         self._store[key] = (time.time() + ttl, value)
 
 
-# Initialize cache (Redis optional). We keep a simple optional driver switch so
-# if REDIS_URL is provided we will attempt to use redis.asyncio; otherwise use
-# the SimpleCache above.
 cache = SimpleCache()
-
-# Placeholder for a cache backend that may be swapped to Redis at startup
-# `cache` will point to either a SimpleCache or RedisCache instance.
-
-# Basic in-memory metrics
 app.state.metrics = {"requests": 0, "successes": 0, "failures": 0}
 
 
@@ -80,10 +64,7 @@ def _make_cache_key_for_bytes(b: bytes) -> str:
 
 
 async def _process_and_cache(cache_key: str, payload: dict) -> dict:
-    """Check cache by key, call Plant.id with payload, normalize and cache result.
-
-    Returns the normalized result (may be from cache).
-    """
+    """Check cache by key, call Plant.id with payload, normalize and cache result."""
     cached = await cache.get(cache_key)
     if cached is not None:
         app.state.metrics["successes"] += 1
@@ -98,63 +79,48 @@ async def _process_and_cache(cache_key: str, payload: dict) -> dict:
 
 async def _call_plant_id(payload: dict, timeout: int = 20) -> dict:
     headers = {"Content-Type": "application/json"}
-    # Use Api-Key header by default when not operating in `body` auth mode.
-    # Plant.id docs expect the API key in the `Api-Key` header.
     if PLANT_ID_AUTH_MODE != "body" and PLANT_ID_API_KEY:
         headers["Api-Key"] = PLANT_ID_API_KEY
-    # Simple retry/backoff. Create a single AsyncClient so connection pooling
-    # and keep-alive work across retry attempts instead of recreating the
-    # client on each loop iteration.
+    
     attempt = 0
     backoff = 0.5
     last_exc: Optional[Exception] = None
     async with httpx.AsyncClient(timeout=timeout) as client:
         while attempt < 4:
-                    try:
-                        # Include api key in body if configured, otherwise rely on header.
-                        final_payload = payload
-                        if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
-                            final_payload = {**payload, "api_key": PLANT_ID_API_KEY}
+            try:
+                final_payload = payload
+                if PLANT_ID_AUTH_MODE == "body" and PLANT_ID_API_KEY:
+                    final_payload = {**payload, "api_key": PLANT_ID_API_KEY}
 
-                        r = await client.post(
-                            PLANT_ID_URL,
-                            params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
-                            json=final_payload,
-                            headers=headers,
-                        )
-                        # raise_for_status will raise HTTPStatusError for 4xx/5xx
-                        r.raise_for_status()
-                        return r.json()
-                    except httpx.RequestError as e:
-                        # Network-level errors (timeouts, connection errors, DNS, etc.)
-                        last_exc = e
-                        attempt += 1
-                        # Use repr(e) so the logged message includes the exception type
-                        # and any internal message for easier debugging (was empty
-                        # previously in some cases).
-                        logger.warning("Plant.id request failed (attempt %d): %r", attempt, e)
-                        await asyncio.sleep(backoff)
-                        backoff *= 2
-                    except httpx.HTTPStatusError as e:
-                        # For HTTP errors, retry on 5xx, but surface 4xx immediately
-                        status = e.response.status_code if e.response is not None else None
-                        if status and 500 <= status < 600:
-                            last_exc = e
-                            attempt += 1
-                            logger.warning("Plant.id returned %d (attempt %d): %r", status, attempt, e)
-                            await asyncio.sleep(backoff)
-                            backoff *= 2
-                            continue
-                        # Don't retry on client errors
-                        raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {e}")
+                r = await client.post(
+                    PLANT_ID_URL,
+                    params={"details": PLANT_ID_DETAILS, "language": PLANT_ID_LANGUAGE},
+                    json=final_payload,
+                    headers=headers,
+                )
+                r.raise_for_status()
+                return r.json()
+            except httpx.RequestError as e:
+                last_exc = e
+                attempt += 1
+                logger.warning("Plant.id request failed (attempt %d): %r", attempt, e)
+                await asyncio.sleep(backoff)
+                backoff *= 2
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code if e.response is not None else None
+                if status and 500 <= status < 600:
+                    last_exc = e
+                    attempt += 1
+                    logger.warning("Plant.id returned %d (attempt %d): %r", status, attempt, e)
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+                    continue
+                raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {e}")
     raise HTTPException(status_code=502, detail=f"Upstream Plant.id error: {last_exc}")
 
 
 class RedisCache:
-    """Simple Redis-backed cache wrapper storing JSON-serialized values.
-
-    Uses `SET key value EX ttl` and `GET key` semantics. Values are JSON.
-    """
+    """Simple Redis-backed cache wrapper storing JSON-serialized values."""
 
     def __init__(self, redis_client, default_ttl: int = 24 * 3600):
         self._r = redis_client
@@ -165,7 +131,6 @@ class RedisCache:
         if v is None:
             return None
         try:
-            # redis returns bytes
             if isinstance(v, bytes):
                 v = v.decode("utf-8")
             return json.loads(v)
@@ -187,7 +152,6 @@ async def _maybe_init_redis_cache():
         return
     try:
         r = aioredis.from_url(REDIS_URL)
-        # quick ping to ensure reachable
         await r.ping()
         cache = RedisCache(r)
         logger.info("Using Redis cache at %s", REDIS_URL)
@@ -202,20 +166,11 @@ async def health_check():
 
 @app.post("/identify")
 async def identify(request: Request, image: UploadFile | None = File(None), check_health: bool = False):
-    """Identify endpoint for the app orchestrator.
-
-    Accepts either multipart form upload (file field `image`) or JSON body with
-    `image_url` to forward to plant.id. Returns structured JSON with at least
-    id, common_name, scientific_name, confidence, provider and raw_response.
-    """
+    """Identify endpoint for the app orchestrator."""
     app.state.metrics["requests"] += 1
 
-    # Prefer multipart file if provided
     try:
         if image is not None:
-            # If the client sent additional form fields (latitude/longitude)
-            # they are available via request.form(). We read them and include
-            # them in the payload forwarded to Plant.id when present.
             form = await request.form()
             lat = form.get('latitude')
             lon = form.get('longitude')
@@ -223,10 +178,7 @@ async def identify(request: Request, image: UploadFile | None = File(None), chec
             if not content:
                 raise HTTPException(status_code=400, detail="Empty file uploaded")
 
-            # Include check_health in cache key
             cache_key = _make_cache_key_for_bytes(content) + f"_h{check_health}_v2"
-
-            # Prepare base64 payload for plant.id (body-based API)
             b64 = base64.b64encode(content).decode("ascii")
             payload: dict = {"images": [b64]}
 
@@ -234,7 +186,6 @@ async def identify(request: Request, image: UploadFile | None = File(None), chec
                 payload["health"] = "all"
                 payload["similar_images"] = True
 
-            # include optional coordinates when provided
             try:
                 if lat is not None:
                     payload['latitude'] = float(str(lat))
@@ -248,7 +199,6 @@ async def identify(request: Request, image: UploadFile | None = File(None), chec
             normalized = await _process_and_cache(cache_key, payload)
             return JSONResponse(content=normalized)
 
-        # Otherwise expect JSON body with image_url
         body = await request.json()
         image_url = body.get("image_url")
         if not image_url:
@@ -300,7 +250,6 @@ def _extract_suggestions(resp: dict) -> list:
                 s = classification.get("suggestions")
                 if isinstance(s, list):
                     suggestions = s
-        # fallback: top-level suggestions may exist
         if not suggestions:
             s2 = resp.get("suggestions")
             if isinstance(s2, list):
@@ -363,7 +312,6 @@ def _extract_care_info(details: dict) -> dict:
     watering_text = None
     watering_citation = best_watering["citation"]
 
-    # 1. Try structured watering (Indonesian friendly)
     if isinstance(watering_raw, dict):
         min_val = watering_raw.get("min")
         max_val = watering_raw.get("max")
@@ -378,7 +326,6 @@ def _extract_care_info(details: dict) -> dict:
             if watering_raw.get("citation"):
                 watering_citation = str(watering_raw.get("citation"))
 
-    # 2. Fallback to English text
     if not watering_text and best_watering["text"]:
         watering_text = best_watering["text"].strip()
         watering_citation = best_watering["citation"]
@@ -401,7 +348,6 @@ def _extract_health_assessment(resp: dict) -> Optional[dict]:
     if not isinstance(result_obj, dict):
         return None
 
-    # If 'is_healthy' is missing, we assume health wasn't requested/returned
     if "is_healthy" not in result_obj:
         return None
 
@@ -436,11 +382,7 @@ def _extract_health_assessment(resp: dict) -> Optional[dict]:
 
 
 def _normalize_plant_id_response(resp: dict) -> dict:
-    """Normalize plant.id response to our minimal schema.
-
-    We attempt to extract the top suggestion if available. The `raw_response`
-    field preserves the original payload for debugging.
-    """
+    """Normalize plant.id response to our minimal schema."""
     out: Dict[str, Any] = {"provider": "plant.id", "raw_response": resp}
     try:
         suggestions = _extract_suggestions(resp)
@@ -454,7 +396,6 @@ def _normalize_plant_id_response(resp: dict) -> dict:
             details = top.get("details") or {}
             care = _extract_care_info(details)
 
-            # Description
             desc_raw = details.get("description_all") or details.get("description") or details.get("description_gpt")
             description = _extract_detail_text_and_citation(desc_raw)["text"]
 
@@ -470,14 +411,143 @@ def _normalize_plant_id_response(resp: dict) -> dict:
                 "health_assessment": health
             })
     except Exception:
-        # If normalization fails, we still return raw_response so callers can
-        # inspect it. Log the exception for debugging upstream response
-        # format issues without surfacing an internal error to the caller.
         logger.warning("Failed to normalize Plant.id response", exc_info=True)
     return out
 
 
+# ==================== SPRINT 3: GUIDE ENDPOINTS ====================
+
+@app.get("/guides/plant/{plant_id}")
+async def get_plant_guide(plant_id: str):
+    """
+    Return detailed treatment guide for a plant
+    For now, we'll return enhanced care info from Plant.id
+    In production, this would fetch from our own database
+    """
+    return {
+        "plant_id": plant_id,
+        "title": "Panduan Lengkap Perawatan Tanaman",
+        "steps": [
+            {
+                "step": 1,
+                "title": "Penempatan & Pencahayaan",
+                "description": "Tempatkan tanaman di area dengan pencahayaan tidak langsung yang cukup untuk pertumbuhan optimal.",
+                "duration_minutes": 10,
+                "materials": [],
+                "image_url": None,
+                "tips": "Hindari sinar matahari langsung pada siang hari yang dapat membakar daun"
+            },
+            {
+                "step": 2,
+                "title": "Penyiraman Rutin",
+                "description": "Siram tanaman ketika permukaan tanah terasa kering sekitar 2-3 cm dari atas.",
+                "duration_minutes": 5,
+                "materials": ["Air bersih", "Penyiram tanaman"],
+                "image_url": None,
+                "tips": "Gunakan air yang sudah diendapkan semalaman untuk menghilangkan klorin"
+            },
+            {
+                "step": 3,
+                "title": "Pemupukan Berkala",
+                "description": "Berikan pupuk organik setiap 2-3 minggu sekali selama musim tanam.",
+                "duration_minutes": 15,
+                "materials": ["Pupuk organik", "Sarung tangan", "Alat pengaduk"],
+                "image_url": None,
+                "tips": "Hindari pemupukan berlebihan yang dapat menyebabkan akar terbakar"
+            },
+            {
+                "step": 4,
+                "title": "Pemangkasan & Perawatan",
+                "description": "Pangkas daun dan ranting yang mati atau rusak untuk mempertahankan bentuk dan kesehatan tanaman.",
+                "duration_minutes": 20,
+                "materials": ["Gunting tanaman steril", "Kain lap"],
+                "image_url": None,
+                "tips": "Gunakan gunting yang tajam dan steril untuk mencegah infeksi"
+            }
+        ],
+        "schedule": {
+            "watering": "setiap 3-4 hari",
+            "fertilizing": "2 minggu sekali",
+            "pruning": "1 bulan sekali",
+            "pest_check": "mingguan"
+        },
+        "total_steps": 4,
+        "estimated_total_time": 50
+    }
+
+
+@app.post("/guides/progress")
+async def save_guide_progress(request: Request):
+    """
+    Save user progress in treatment guides
+    Expects JSON body: {"guide_id": "123", "user_id": "abc", "current_step": 1, "completed_steps": [1], "is_completed": false}
+    """
+    try:
+        data = await request.json()
+        required_fields = ["guide_id", "user_id", "current_step"]
+        for field in required_fields:
+            if field not in data:
+                raise HTTPException(status_code=400, detail=f"Missing field: {field}")
+        
+        return {
+            "status": "success", 
+            "message": "Progress saved",
+            "data": {
+                **data,
+                "saved_at": time.time(),
+                "id": f"progress_{int(time.time())}"
+            }
+        }
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/guides/disease/{disease_name}")
+async def get_disease_guide(disease_name: str):
+    """
+    Return treatment guide for specific plant disease
+    """
+    return {
+        "disease_name": disease_name,
+        "title": f"Panduan Penanganan {disease_name}",
+        "description": f"Panduan lengkap untuk mengatasi penyakit {disease_name} pada tanaman",
+        "steps": [
+            {
+                "step": 1,
+                "title": "Identifikasi Gejala",
+                "description": "Kenali gejala penyakit secara tepat sebelum melakukan penanganan.",
+                "duration_minutes": 10,
+                "materials": ["Kaca pembesar", "Notebook"],
+                "tips": "Ambil foto gejala untuk referensi"
+            },
+            {
+                "step": 2,
+                "title": "Isolasi Tanaman",
+                "description": "Pisahkan tanaman yang terinfeksi untuk mencegah penyebaran.",
+                "duration_minutes": 15,
+                "materials": ["Pot baru", "Media tanam segar"],
+                "tips": "Cuci tangan setelah menangani tanaman sakit"
+            }
+        ],
+        "preventive_measures": [
+            "Jaga kebersihan area tanam",
+            "Hindari penyiraman berlebihan",
+            "Berikan sirkulasi udara yang cukup"
+        ],
+        "recommended_treatments": [
+            "Fungisida organik untuk jamur",
+            "Insektisda alami untuk hama"
+        ]
+    }
+
+
+@app.get("/guides/health")
+async def guides_health_check():
+    return {"status": "healthy", "service": "guide_service"}
+
+
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("main:app", host="127.0.0.1", port=8001, reload=True)

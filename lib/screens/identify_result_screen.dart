@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/identify_result.dart';
 import '../providers/collection_provider.dart';
 import '../theme/colors.dart';
+import '../screens/treatment_guide_screen.dart';
 
 class IdentifyResultScreen extends ConsumerStatefulWidget {
   final IdentifyResult result;
@@ -151,7 +152,7 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surfaceWarning,
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 76)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -237,7 +238,7 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: Colors.black.withValues(alpha: 13),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -268,7 +269,7 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
                                 (prob > 0.5
                                         ? AppColors.danger
                                         : AppColors.warning)
-                                    .withValues(alpha: 0.1),
+                                    .withValues(alpha: 25),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -457,13 +458,13 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: widget.isOffline
-                        ? AppColors.surfaceWarning.withValues(alpha: 0.3)
+                        ? AppColors.surfaceWarning.withValues(alpha: 76)
                         : AppColors.surface,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: widget.isOffline
-                          ? AppColors.warning.withValues(alpha: 0.3)
-                          : AppColors.muted.withValues(alpha: 0.2),
+                          ? AppColors.warning.withValues(alpha: 76)
+                          : AppColors.muted.withValues(alpha: 51),
                     ),
                   ),
                   child: Row(
@@ -763,7 +764,14 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () {},
+                        onPressed: () {
+                          // TODO: Implement share functionality
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Fitur berbagi belum tersedia'),
+                            ),
+                          );
+                        },
                         icon: const Icon(Icons.share, color: AppColors.primary),
                         label: const Text(
                           'Bagikan',
@@ -782,11 +790,35 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
                           ),
                         ),
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Panduan Lengkap (stub)'),
-                            ),
-                          );
+                          if (widget.result.id != null &&
+                              widget.result.id!.isNotEmpty) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TreatmentGuideScreen(
+                                  plantId: widget.result.id!,
+                                  plantName:
+                                      widget.result.commonName ?? 'Tanaman',
+                                  fromResult: true,
+                                  result: widget.result,
+                                ),
+                              ),
+                            );
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TreatmentGuideScreen(
+                                  plantId:
+                                      'from_result_${widget.result.hashCode}',
+                                  plantName:
+                                      widget.result.commonName ?? 'Tanaman',
+                                  fromResult: true,
+                                  result: widget.result,
+                                ),
+                              ),
+                            );
+                          }
                         },
                         icon: const Icon(
                           Icons.menu_book_outlined,
@@ -827,7 +859,7 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
         border: Border.all(color: AppColors.surfaceBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: 8),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -839,7 +871,7 @@ class _IdentifyResultScreenState extends ConsumerState<IdentifyResultScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withValues(alpha: 25),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color, size: 24),
