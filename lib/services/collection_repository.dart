@@ -1,12 +1,14 @@
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+
 import '../models/identify_result.dart';
 import '../models/plant_collection.dart';
 import 'collection_database.dart';
-import 'sync_service.dart';
 import 'supabase_client.dart';
+import 'sync_service.dart';
 
 /// Repository layer for collection data access
 /// Abstracts database operations and provides business logic
@@ -16,7 +18,7 @@ class CollectionRepository {
   late SyncService? _syncService;
 
   CollectionRepository({CollectionDatabase? database})
-      : _db = database ?? CollectionDatabase.instance {
+    : _db = database ?? CollectionDatabase.instance {
     // Initialize sync service if Supabase is available
     _initSyncService();
   }
@@ -50,7 +52,7 @@ class CollectionRepository {
   }) async {
     // Copy image to permanent storage
     final savedImagePath = await _saveImage(imageFile);
-    
+
     // Create collection entry
     final collection = PlantCollection(
       userId: userId,
@@ -76,7 +78,7 @@ class CollectionRepository {
         await _syncService!.syncCollection(savedCollection);
         await _db.markAsSynced(id);
       } catch (e) {
-  debugPrint('⚠️ Failed to sync new collection: $e');
+        debugPrint('⚠️ Failed to sync new collection: $e');
         // Don't throw, keep collection locally
       }
     }
@@ -88,7 +90,7 @@ class CollectionRepository {
   Future<String> _saveImage(File imageFile) async {
     final directory = await getApplicationDocumentsDirectory();
     final collectionDir = Directory('${directory.path}/collections');
-    
+
     // Create collections directory if it doesn't exist
     if (!await collectionDir.exists()) {
       await collectionDir.create(recursive: true);
@@ -117,14 +119,14 @@ class CollectionRepository {
   /// Update collection
   Future<void> updateCollection(PlantCollection collection) async {
     await _db.update(collection);
-    
+
     // Try to sync to Supabase
     if (isSyncAvailable) {
       try {
         await _syncService!.syncCollection(collection);
         await _db.markAsSynced(collection.id!);
       } catch (e) {
-  debugPrint('⚠️ Failed to sync updated collection: $e');
+        debugPrint('⚠️ Failed to sync updated collection: $e');
       }
     }
   }
@@ -144,7 +146,7 @@ class CollectionRepository {
         try {
           await _syncService!.deleteCollection(id);
         } catch (e) {
-    debugPrint('⚠️ Failed to delete collection from Supabase: $e');
+          debugPrint('⚠️ Failed to delete collection from Supabase: $e');
         }
       }
 
@@ -213,7 +215,7 @@ class CollectionRepository {
   /// Sync collections with backend
   Future<void> syncCollections({String? userId}) async {
     final unsynced = await getUnsyncedCollections(userId: userId);
-    
+
     if (!isSyncAvailable) {
       debugPrint('⚠️ Sync service not available');
       return;
@@ -225,17 +227,17 @@ class CollectionRepository {
     }
 
     debugPrint('🔄 Syncing ${unsynced.length} collections to Supabase...');
-    
+
     try {
       await _syncService!.syncCollections(unsynced);
-      
+
       // Mark all as synced
       for (final collection in unsynced) {
         if (collection.id != null) {
           await markAsSynced(collection.id!);
         }
       }
-      
+
       debugPrint('✅ Sync completed successfully');
     } catch (e) {
       debugPrint('❌ Sync failed: $e');
@@ -246,7 +248,7 @@ class CollectionRepository {
   /// Check sync connection
   Future<bool> checkSyncConnection() async {
     if (!isSyncAvailable) return false;
-    
+
     try {
       return await _syncService!.checkConnection();
     } catch (e) {
@@ -258,7 +260,7 @@ class CollectionRepository {
   Future<Map<String, dynamic>> getSyncStatus({String? userId}) async {
     final total = await getCollectionCount(userId: userId);
     final unsynced = await getUnsyncedCollections(userId: userId);
-    
+
     return {
       'total': total,
       'unsynced': unsynced.length,
