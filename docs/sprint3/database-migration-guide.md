@@ -57,8 +57,12 @@ WHERE tablename = 'treatment_guides';
 
 **Expected Output:**
 
--   11 kolom (id, plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration, created_at, updated_at, created_by)
+-   11 kolom (id, plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration_minutes, estimated_duration_text, created_at, updated_at)
 -   3 indexes (idx_guides_plant_id, idx_guides_disease, idx_guides_type)
+-   1 trigger (update_treatment_guides_updated_at)
+-   1 function (update_updated_at_column)
+
+**Note:** Migration ini juga membuat fungsi `update_updated_at_column()` yang akan otomatis update timestamp `updated_at` setiap ada UPDATE pada tabel. Fungsi ini reusable untuk tabel lain.
 
 ### 4. Jalankan Migration 002 - Collections Tables
 
@@ -104,9 +108,13 @@ AND tc.table_name IN ('plant_collections', 'care_history');
 
 **Expected Output:**
 
--   plant_collections: 16 kolom
--   care_history: 8 kolom
+-   plant_collections: 15 kolom (id, user_id, plant_id, common_name, scientific_name, image_url, identified_at, last_care_date, next_care_date, care_frequency_days, health_status, notes, is_synced, created_at, updated_at)
+-   care_history: 6 kolom (id, collection_id, care_date, care_type, notes, created_at)
 -   2 foreign keys (plant_collections -> auth.users, care_history -> plant_collections)
+-   1 trigger (update_plant_collections_updated_at)
+-   Reuses function update_updated_at_column() from migration 001
+
+**Note:** Trigger `update_plant_collections_updated_at` memastikan `updated_at` otomatis diperbarui setiap kali ada UPDATE pada collection.
 
 ### 5. Jalankan Migration 003 - Seed Data
 
@@ -129,7 +137,8 @@ SELECT
     severity,
     guide_type,
     jsonb_array_length(steps) as step_count,
-    estimated_duration
+    estimated_duration_minutes,
+    estimated_duration_text
 FROM treatment_guides
 ORDER BY created_at DESC;
 ```
@@ -137,13 +146,33 @@ ORDER BY created_at DESC;
 **Expected Output:**
 5 rows dengan data:
 
-1. Leaf Spot (medium, disease_treatment, 5 steps)
-2. Root Rot (high, disease_treatment, 4 steps)
-3. Aphid Infestation (medium, disease_treatment, 3 steps)
-4. Monstera Care (low, identification, 3 steps)
-5. Yellowing Leaves (low, disease_treatment, 4 steps)
+1. Leaf Spot (medium, disease_treatment, 5 steps, 20160 min = 2 weeks, "2-3 minggu")
+2. Root Rot (high, disease_treatment, 4 steps, 64800 min = 45 days, "1-2 bulan recovery")
+3. Aphid Infestation (medium, disease_treatment, 3 steps, 20160 min = 2 weeks, "2-3 minggu")
+4. Monstera Care (low, identification, 3 steps, NULL, "ongoing care")
+5. Yellowing Leaves (low, disease_treatment, 4 steps, 10080 min = 1 week, "1-2 minggu")
+
+**Note:**
+
+-   `estimated_duration_minutes` menyimpan durasi dalam menit untuk kalkulasi (e.g., 1440 = 1 hari, 10080 = 1 minggu)
+-   `estimated_duration_text` menyimpan teks human-readable untuk display UI
 
 ## Troubleshooting
+
+### Error: "function uuid_generate_v4() does not exist"
+
+**Penyebab:** Extension uuid-ossp belum diaktifkan
+
+**Solusi:**
+
+```sql
+-- Enable UUID extension manually
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Lalu jalankan ulang migration
+```
+
+**Note:** Migration files sudah include perintah ini di awal, jadi seharusnya tidak terjadi error ini.
 
 ### Error: "relation treatment_guides already exists"
 
@@ -195,6 +224,21 @@ WHERE table_schema = 'public'
 ORDER BY table_name;
 
 -- Expected: care_history, plant_collections, treatment_guides
+
+-- Verify triggers and functions
+SELECT trigger_name, event_object_table, action_statement
+FROM information_schema.triggers
+WHERE trigger_schema = 'public'
+ORDER BY event_object_table, trigger_name;
+
+-- Expected triggers:
+-- update_plant_collections_updated_at on plant_collections
+-- update_treatment_guides_updated_at on treatment_guides
+
+-- Verify the update_updated_at_column function exists
+SELECT routine_name, routine_type
+FROM information_schema.routines
+WHERE routine_schema = 'public' AND routine_name = 'update_updated_at_column';
 ```
 
 ### ✅ Test Sample Queries
@@ -214,7 +258,43 @@ SELECT COUNT(*) FROM plant_collections;
 
 -- Test care_history (akan kosong)
 SELECT COUNT(*) FROM care_history;
+
+-- Test auto-update timestamp trigger (menggunakan data seed)
+-- Ambil salah satu guide untuk di-update
+DO $$
+DECLARE
+    guide_id UUID;
+    old_timestamp TIMESTAMPTZ;
+    new_timestamp TIMESTAMPTZ;
+BEGIN
+    -- Ambil ID guide pertama
+    SELECT id, updated_at INTO guide_id, old_timestamp
+    FROM treatment_guides
+    LIMIT 1;
+
+    -- Tunggu 1 detik
+    PERFORM pg_sleep(1);
+
+    -- Update guide
+    UPDATE treatment_guides
+    SET estimated_duration_text = '1-2 weeks'
+    WHERE id = guide_id;
+
+    -- Ambil timestamp baru
+    SELECT updated_at INTO new_timestamp
+    FROM treatment_guides
+    WHERE id = guide_id;
+
+    -- Verifikasi timestamp berubah
+    IF new_timestamp > old_timestamp THEN
+        RAISE NOTICE 'SUCCESS: Auto-update timestamp works! Old: %, New: %', old_timestamp, new_timestamp;
+    ELSE
+        RAISE EXCEPTION 'FAILED: Timestamp not updated! Old: %, New: %', old_timestamp, new_timestamp;
+    END IF;
+END $$;
 ```
+
+**Expected:** Pesan "SUCCESS: Auto-update timestamp works!" dengan timestamps yang berbeda.
 
 ### ✅ Setup Row Level Security (RLS)
 
@@ -289,6 +369,38 @@ USING (
         AND plant_collections.user_id = auth.uid()
     )
 );
+```
+
+## Helper Information
+
+### Duration Minutes Conversion
+
+Untuk konsistensi data `estimated_duration_minutes`:
+
+```sql
+-- Common conversions
+-- 1 hour = 60 minutes
+-- 1 day = 1440 minutes
+-- 1 week = 10080 minutes
+-- 2 weeks = 20160 minutes
+-- 1 month (30 days) = 43200 minutes
+-- 45 days = 64800 minutes
+
+-- Example: Convert minutes to human-readable
+SELECT
+    estimated_duration_minutes,
+    CASE
+        WHEN estimated_duration_minutes < 60 THEN
+            estimated_duration_minutes || ' menit'
+        WHEN estimated_duration_minutes < 1440 THEN
+            ROUND(estimated_duration_minutes / 60.0, 1) || ' jam'
+        WHEN estimated_duration_minutes < 10080 THEN
+            ROUND(estimated_duration_minutes / 1440.0, 1) || ' hari'
+        ELSE
+            ROUND(estimated_duration_minutes / 10080.0, 1) || ' minggu'
+    END as duration_display
+FROM treatment_guides
+WHERE estimated_duration_minutes IS NOT NULL;
 ```
 
 ### ✅ Update Environment Variables

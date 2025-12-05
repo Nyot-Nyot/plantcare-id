@@ -2,7 +2,7 @@
 -- Inserts sample treatment guides for common plant issues
 
 -- Guide 1: Leaf Spot Treatment
-INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration)
+INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration_minutes, estimated_duration_text)
 VALUES (
     'general',
     'Leaf Spot',
@@ -56,11 +56,12 @@ VALUES (
         }
     ]'::jsonb,
     '["sarung tangan", "gunting steril", "alkohol 70%", "kantong plastik", "fungisida", "sprayer", "masker"]'::jsonb,
+    20160,
     '2-3 minggu'
 );
 
 -- Guide 2: Root Rot Treatment
-INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration)
+INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration_minutes, estimated_duration_text)
 VALUES (
     'general',
     'Root Rot',
@@ -105,11 +106,12 @@ VALUES (
         }
     ]'::jsonb,
     '["sarung tangan", "gunting steril", "alkohol 70%", "fungisida sistemik", "wadah", "pot baru", "media tanam steril", "kerikil drainase"]'::jsonb,
+    64800,
     '1-2 bulan recovery'
 );
 
 -- Guide 3: Pest Control - Aphids
-INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration)
+INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration_minutes, estimated_duration_text)
 VALUES (
     'general',
     'Aphid Infestation',
@@ -145,11 +147,12 @@ VALUES (
         }
     ]'::jsonb,
     '["selang air", "sprayer", "sabun insektisida atau sabun cuci piring"]'::jsonb,
+    20160,
     '2-3 minggu'
 );
 
 -- Guide 4: General Plant Care - Monstera
-INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration)
+INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration_minutes, estimated_duration_text)
 VALUES (
     'monstera_deliciosa',
     NULL,
@@ -185,11 +188,12 @@ VALUES (
         }
     ]'::jsonb,
     '["kaleng penyiram", "pupuk NPK cair"]'::jsonb,
+    NULL,
     'ongoing care'
 );
 
 -- Guide 5: Yellowing Leaves Treatment
-INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration)
+INSERT INTO treatment_guides (plant_id, disease_name, severity, guide_type, steps, materials, estimated_duration_minutes, estimated_duration_text)
 VALUES (
     'general',
     'Yellowing Leaves',
@@ -234,6 +238,7 @@ VALUES (
         }
     ]'::jsonb,
     '["gunting steril", "pupuk cair", "garam epsom (opsional)", "soil moisture meter (opsional)"]'::jsonb,
+    10080,
     '1-2 minggu'
 );
 
@@ -245,6 +250,7 @@ SELECT
     severity,
     guide_type,
     jsonb_array_length(steps) as step_count,
-    estimated_duration
+    estimated_duration_minutes,
+    estimated_duration_text
 FROM treatment_guides
 ORDER BY created_at DESC;

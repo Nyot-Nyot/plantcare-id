@@ -1,6 +1,9 @@
 -- Sprint 3: Plant Collections Tables
 -- Creates tables for user's plant collection and care history
 
+-- Enable UUID extension (required for uuid_generate_v4())
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Plant Collections Table
 CREATE TABLE IF NOT EXISTS plant_collections (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -47,3 +50,19 @@ COMMENT ON COLUMN plant_collections.is_synced IS 'Flag to track if local changes
 
 COMMENT ON TABLE care_history IS 'Tracks history of care actions performed on plants';
 COMMENT ON COLUMN care_history.care_type IS 'Type of care action: watering, fertilizing, pruning, repotting, pest_control, or other';
+
+-- Create or reuse function to automatically update updated_at timestamp
+-- (This function may already exist from 001_create_treatment_guides.sql)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for plant_collections table
+CREATE TRIGGER update_plant_collections_updated_at
+    BEFORE UPDATE ON plant_collections
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
