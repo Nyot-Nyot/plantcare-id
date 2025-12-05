@@ -397,43 +397,69 @@ class GuideService:
             logger.error(f"Unexpected error updating guide {guide_id}: {type(e).__name__}: {e}")
             raise GuideServiceError(f"Unexpected error updating guide: {e}")
 
-    async def delete_guide(self, guide_id: str) -> bool:
+    async def delete_guide(self, guide_id: str) -> Optional[TreatmentGuide]:
         """
         Delete a treatment guide (hard delete).
+
+        Uses Prefer: return=representation header to return the deleted object,
+        which allows detection of whether a row was actually deleted and provides
+        the plant_id for cache invalidation without a separate GET request.
 
         Args:
             guide_id: UUID of the guide to delete
 
         Returns:
-            True if deleted successfully, False if not found
+            Deleted TreatmentGuide model instance if found and deleted, None if not found
 
         Raises:
             SupabaseError: If database error occurs
+            GuideServiceError: If data parsing fails
         """
         self._check_configured()
 
         try:
+            # Use Prefer: return=representation to get the deleted object
+            headers_with_return = {**self.headers, "Prefer": "return=representation"}
+
             async with httpx.AsyncClient() as client:
                 response = await client.delete(
                     f"{self.base_url}/treatment_guides",
-                    headers=self.headers,
+                    headers=headers_with_return,
                     params={"id": f"eq.{guide_id}"},
                 )
 
-                if response.status_code in [200, 204]:
-                    # Check if any rows were deleted
-                    # Supabase returns empty array if nothing was deleted
-                    data = response.json() if response.text else []
+                if response.status_code == 200:
+                    # With return=representation, successful deletion returns 200 with the deleted object
+                    data = response.json()
 
                     if not data or (isinstance(data, list) and len(data) == 0):
-                        # Guide not found
-                        return False
+                        # Guide not found (no rows matched the condition)
+                        logger.info(f"Guide {guide_id} not found for deletion")
+                        return None
 
-                    logger.info(f"Successfully deleted guide {guide_id}")
-                    return True
+                    # Extract first item if list
+                    guide_dict = data[0] if isinstance(data, list) else data
+
+                    # Parse JSONB fields if they're strings
+                    if isinstance(guide_dict.get("steps"), str):
+                        guide_dict["steps"] = json.loads(guide_dict["steps"])
+                    if isinstance(guide_dict.get("materials"), str):
+                        guide_dict["materials"] = json.loads(guide_dict["materials"])
+
+                    # Parse response into TreatmentGuide model
+                    try:
+                        deleted_guide = TreatmentGuide(**guide_dict)
+                        logger.info(f"Successfully deleted guide {guide_id} for plant {deleted_guide.plant_id}")
+                        return deleted_guide
+                    except ValidationError as e:
+                        logger.error(f"Failed to parse deleted guide {guide_id}: {e}")
+                        raise GuideServiceError(
+                            f"Invalid guide data returned from database: {e}"
+                        )
 
                 elif response.status_code == 404:
-                    return False
+                    # Explicit 404 means guide not found
+                    return None
                 else:
                     logger.error(
                         f"Supabase error deleting guide {guide_id}: "
@@ -446,6 +472,8 @@ class GuideService:
                     )
 
         except SupabaseError:
+            raise
+        except GuideServiceError:
             raise
         except httpx.RequestError as e:
             logger.error(f"Network error deleting guide {guide_id}: {e}")

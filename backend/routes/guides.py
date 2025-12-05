@@ -351,7 +351,9 @@ async def delete_guide(
     Delete a treatment guide (hard delete).
 
     This endpoint permanently deletes a guide from Supabase
-    and invalidates all relevant caches.
+    and invalidates all relevant caches. The deleted guide object
+    is returned by the service to enable atomic cache invalidation
+    without race conditions.
 
     - **guide_id**: UUID of the guide to delete
     - **Returns**: 204 No Content on success
@@ -369,26 +371,18 @@ async def delete_guide(
 
         logger.info(f"Deleting guide: {guide_id} (user: {current_user[:10]}...)")
 
-        # First, get the guide to know its plant_id (for cache invalidation)
-        existing_guide = await get_guide_service().get_guide_by_id(guide_id)
+        # Delete guide and get the deleted object (uses Prefer: return=representation)
+        # This avoids race condition where guide could be modified between GET and DELETE
+        deleted_guide = await get_guide_service().delete_guide(guide_id)
 
-        if not existing_guide:
+        if not deleted_guide:
+            # Guide not found
             raise HTTPException(
                 status_code=404,
                 detail=f"Treatment guide with ID '{guide_id}' not found",
             )
 
-        # Delete guide in database
-        deleted = await get_guide_service().delete_guide(guide_id)
-
-        if not deleted:
-            # This shouldn't happen since we just checked, but handle it anyway
-            raise HTTPException(
-                status_code=404,
-                detail=f"Treatment guide with ID '{guide_id}' not found",
-            )
-
-        # Invalidate caches:
+        # Invalidate caches using plant_id from the deleted object:
         # 1. Specific guide cache
         guide_cache_key = f"guide:id:{guide_id}"
         await cache_service.delete(guide_cache_key)
@@ -396,10 +390,10 @@ async def delete_guide(
 
         # 2. Plant-related guides cache
         invalidated_count = await cache_service.invalidate_pattern(
-            f"guide:plant:{existing_guide.plant_id}:*"
+            f"guide:plant:{deleted_guide.plant_id}:*"
         )
         logger.info(
-            f"Invalidated {invalidated_count} cache entries for plant_id: {existing_guide.plant_id}"
+            f"Invalidated {invalidated_count} cache entries for plant_id: {deleted_guide.plant_id}"
         )
 
         # Return 204 No Content (no response body)
