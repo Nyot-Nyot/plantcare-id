@@ -19,15 +19,28 @@ logger = logging.getLogger(__name__)
 class GuideService:
     """Service for managing treatment guides in Supabase."""
 
-    def __init__(self):
-        """Initialize Supabase client."""
+    def __init__(self, raise_on_missing_env: bool = True):
+        """
+        Initialize Supabase client.
+
+        Args:
+            raise_on_missing_env: If True, raise ValueError when env vars are missing.
+                                 If False, set client as None (useful for testing).
+        """
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_ANON_KEY")
 
         if not self.supabase_url or not self.supabase_key:
-            raise ValueError(
-                "SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables"
-            )
+            if raise_on_missing_env:
+                raise ValueError(
+                    "SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables"
+                )
+            else:
+                # Allow initialization without env vars for testing
+                self.supabase_url = None
+                self.supabase_key = None
+                self.headers = None
+                return
 
         self.headers = {
             "apikey": self.supabase_key,
@@ -36,6 +49,14 @@ class GuideService:
             "Prefer": "return=representation",
         }
         self.base_url = f"{self.supabase_url}/rest/v1"
+
+    def _check_configured(self):
+        """Check if service is properly configured."""
+        if not self.supabase_url or not self.supabase_key:
+            raise ValueError(
+                "GuideService not properly configured. "
+                "SUPABASE_URL and SUPABASE_ANON_KEY must be set."
+            )
 
     async def get_guide_by_id(self, guide_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -50,6 +71,7 @@ class GuideService:
         Raises:
             HTTPException: If database error occurs
         """
+        self._check_configured()
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -104,6 +126,7 @@ class GuideService:
         Raises:
             HTTPException: If database error occurs
         """
+        self._check_configured()
         try:
             # Validate limit
             limit = min(max(1, limit), 100)

@@ -38,5 +38,8 @@ jobs:
 
             - name: Run backend tests
               working-directory: ./
+              env:
+                  SUPABASE_URL: https://dummy-supabase-url.supabase.co
+                  SUPABASE_ANON_KEY: dummy-anon-key-for-testing
               run: |
                   python -m pytest -q backend/tests

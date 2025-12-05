@@ -14,8 +14,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/guides", tags=["guides"])
 
-# Initialize guide service
-guide_service = GuideService()
+# Lazy initialization of guide service
+_guide_service = None
+
+
+def get_guide_service() -> GuideService:
+    """Get or create guide service instance (lazy loading)."""
+    global _guide_service
+    if _guide_service is None:
+        _guide_service = GuideService()
+    return _guide_service
 
 
 @router.get("/{guide_id}", response_model=TreatmentGuideResponse)
@@ -42,7 +50,7 @@ async def get_guide_by_id(guide_id: str):
 
         # Cache miss, fetch from database
         logger.info(f"Fetching guide from database: {guide_id}")
-        guide_data = await guide_service.get_guide_by_id(guide_id)
+        guide_data = await get_guide_service().get_guide_by_id(guide_id)
 
         if not guide_data:
             raise HTTPException(
@@ -125,7 +133,7 @@ async def get_guides_by_plant(
             f"(disease: {disease_name}, limit: {limit}, offset: {offset})"
         )
 
-        guides_data = await guide_service.get_guides_by_plant_id(
+        guides_data = await get_guide_service().get_guides_by_plant_id(
             plant_id=plant_id,
             disease_name=disease_name,
             limit=limit,
