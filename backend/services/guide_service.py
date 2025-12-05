@@ -10,7 +10,11 @@ import httpx
 from dotenv import load_dotenv
 from pydantic import ValidationError
 
-from backend.models.treatment_guide import TreatmentGuide, TreatmentGuideCreate
+from backend.models.treatment_guide import (
+    TreatmentGuide,
+    TreatmentGuideCreate,
+    TreatmentGuideUpdate,
+)
 
 load_dotenv()
 
@@ -293,42 +297,61 @@ class GuideService:
             raise
 
     async def update_guide(
-        self, guide_id: str, guide_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, guide_id: str, guide_update: TreatmentGuideUpdate
+    ) -> Optional[TreatmentGuide]:
         """
         Update an existing treatment guide.
 
         Args:
             guide_id: UUID of the guide to update
-            guide_data: Updated guide data
+            guide_update: TreatmentGuideUpdate model instance with validated data
 
         Returns:
-            Updated guide data or None if not found
+            Updated TreatmentGuide model instance or None if not found
 
         Raises:
-            HTTPException: If database error occurs
+            SupabaseError: If database error occurs
+            GuideServiceError: If data parsing fails
         """
+        self._check_configured()
+
         try:
-            # Convert steps to dict if present
-            if "steps" in guide_data and guide_data["steps"]:
-                guide_data["steps"] = [
-                    step.model_dump() if hasattr(step, "model_dump") else step
-                    for step in guide_data["steps"]
-                ]
+            # Pydantic automatically handles serialization with model_dump()
+            # Only include fields that were actually set (exclude_unset=True)
+            update_data = guide_update.model_dump(mode="json", exclude_unset=True)
+
+            # If no fields to update, return None
+            if not update_data:
+                logger.warning(f"No fields to update for guide {guide_id}")
+                return None
 
             async with httpx.AsyncClient() as client:
                 response = await client.patch(
                     f"{self.base_url}/treatment_guides",
                     headers=self.headers,
                     params={"id": f"eq.{guide_id}"},
-                    json=guide_data,
+                    json=update_data,
                 )
 
                 if response.status_code == 200:
-                    updated = response.json()
-                    if updated:
-                        return updated[0] if isinstance(updated, list) else updated
-                    return None
+                    data = response.json()
+
+                    if not data or (isinstance(data, list) and len(data) == 0):
+                        # Guide not found (empty result)
+                        return None
+
+                    # Extract first item if list
+                    guide_dict = data[0] if isinstance(data, list) else data
+
+                    # Parse response into TreatmentGuide model
+                    try:
+                        return TreatmentGuide(**guide_dict)
+                    except ValidationError as e:
+                        logger.error(f"Failed to parse updated guide {guide_id}: {e}")
+                        raise GuideServiceError(
+                            f"Invalid guide data returned from database: {e}"
+                        )
+
                 elif response.status_code == 404:
                     return None
                 else:
@@ -336,8 +359,19 @@ class GuideService:
                         f"Supabase error updating guide {guide_id}: "
                         f"{response.status_code} - {response.text}"
                     )
-                    raise Exception(f"Database error: {response.status_code}")
+                    raise SupabaseError(
+                        f"Failed to update guide {guide_id}",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
 
-        except Exception as e:
-            logger.error(f"Error updating guide {guide_id}: {str(e)}")
+        except SupabaseError:
             raise
+        except GuideServiceError:
+            raise
+        except httpx.RequestError as e:
+            logger.error(f"Network error updating guide {guide_id}: {e}")
+            raise SupabaseError(f"Network error updating guide: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error updating guide {guide_id}: {type(e).__name__}: {e}")
+            raise GuideServiceError(f"Unexpected error updating guide: {e}")
