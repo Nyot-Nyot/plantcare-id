@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +66,18 @@ async def verify_auth_token(
     return token  # In production, return user_id or User object
 
 
-async def require_admin(token: str = Header(..., alias="authorization")) -> str:
+async def require_admin(current_user: str = Depends(verify_auth_token)) -> str:
     """
     Require admin role for sensitive operations.
 
-    This is a placeholder that should check user roles in production.
+    This dependency chains from verify_auth_token to ensure the token
+    is verified before checking admin permissions.
 
     Args:
-        token: Authorization token (automatically populated by verify_auth_token)
+        current_user: User identifier from verify_auth_token dependency
 
     Returns:
-        User ID
+        User ID if admin check passes
 
     Raises:
         HTTPException: If user is not admin (403 Forbidden)
@@ -85,9 +86,13 @@ async def require_admin(token: str = Header(..., alias="authorization")) -> str:
     # For now, all authenticated users are treated as admins
 
     # In production:
-    # 1. Get user from token
-    # 2. Check user role in database or JWT claims
-    # 3. Raise 403 if not admin
+    # 1. Use current_user to fetch user record from Supabase
+    # 2. Check user role/permissions in database or JWT claims
+    # 3. Raise 403 Forbidden if not admin:
+    #    raise HTTPException(
+    #        status_code=status.HTTP_403_FORBIDDEN,
+    #        detail="Admin privileges required"
+    #    )
 
-    logger.info("Admin check passed (placeholder)")
-    return token
+    logger.info(f"Admin check passed (placeholder) for user: {current_user[:10]}...")
+    return current_user
