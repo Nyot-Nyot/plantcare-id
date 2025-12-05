@@ -45,15 +45,16 @@ REDIS_URL = os.getenv("REDIS_URL")
 logger = logging.getLogger("orchestrator")
 logging.basicConfig(level=logging.INFO)
 
+# Initialize FastAPI app once
+app = FastAPI()
+
 # Initialize rate limiter (100 requests per minute per user)
 if SLOWAPI_AVAILABLE:
     limiter = Limiter(key_func=get_remote_address)
-    app = FastAPI()
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     logger.info("Rate limiting enabled (100 req/min)")
 else:
-    app = FastAPI()
     logger.warning("slowapi not installed, rate limiting disabled")
 
 # Import and include routes
