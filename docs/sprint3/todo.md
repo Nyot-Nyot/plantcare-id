@@ -42,19 +42,19 @@
 **Estimasi:** 0.5 jam
 **Priority:** High
 
--   [ ] Verifikasi koneksi Supabase (pastikan tabel plants, collections sudah ada)
--   [ ] Tambahkan ENV variables untuk FCM: `FCM_SERVER_KEY` di backend
--   [ ] Update `.env.example` dengan placeholder FCM keys
--   [ ] Install dependencies Flutter:
-    -   [ ] `firebase_core` dan `firebase_messaging` untuk FCM
-    -   [ ] `flutter_local_notifications` untuk local notifications
-    -   [ ] `hive_flutter` / `drift` untuk local storage (jika belum ada)
+-   [x] Verifikasi koneksi Supabase (pastikan tabel plants, collections sudah ada)
+-   [x] Tambahkan ENV variables untuk FCM: `FCM_SERVER_KEY` di backend
+-   [x] Update `.env.example` dengan placeholder FCM keys
+-   [x] Install dependencies Flutter:
+    -   [x] `firebase_core` (v4.2.1) dan `firebase_messaging` (v16.0.4) untuk FCM
+    -   [x] `flutter_local_notifications` (v18.0.1) untuk local notifications
+    -   [x] `sqflite` untuk local storage (sudah terinstall)
 
 **Acceptance Criteria:**
 
--   Environment variables terkonfigurasi dengan benar
--   Dependencies terinstall tanpa error
--   Dapat compile dan run app dengan dependencies baru
+-   ✅ Environment variables terkonfigurasi dengan benar
+-   ✅ Dependencies terinstall tanpa error
+-   ✅ Dapat compile dan run app dengan dependencies baru
 
 **Technical Notes:**
 
