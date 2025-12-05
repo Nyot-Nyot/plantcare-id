@@ -17,6 +17,15 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     aioredis = None
 
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    SLOWAPI_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    SLOWAPI_AVAILABLE = False
+    Limiter = None
+
 load_dotenv()
 
 PLANT_ID_API_KEY = os.getenv("PLANT_ID_API_KEY")
@@ -36,7 +45,24 @@ REDIS_URL = os.getenv("REDIS_URL")
 logger = logging.getLogger("orchestrator")
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI()
+# Initialize rate limiter (100 requests per minute per user)
+if SLOWAPI_AVAILABLE:
+    limiter = Limiter(key_func=get_remote_address)
+    app = FastAPI()
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    logger.info("Rate limiting enabled (100 req/min)")
+else:
+    app = FastAPI()
+    logger.warning("slowapi not installed, rate limiting disabled")
+
+# Import and include routes
+try:
+    from backend.routes.guides import router as guides_router
+    app.include_router(guides_router)
+    logger.info("Treatment guides routes registered")
+except ImportError as e:
+    logger.warning(f"Could not import guides routes: {e}")
 
 
 class SimpleCache:

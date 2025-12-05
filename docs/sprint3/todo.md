@@ -123,29 +123,48 @@
 **Estimasi:** 2 jam
 **Priority:** High
 
--   [ ] Implementasi endpoint `GET /api/guides/{guide_id}`
+-   [x] Implementasi endpoint `GET /api/guides/{guide_id}`
 
-    -   [ ] Query dari Supabase dengan error handling
-    -   [ ] Return structured JSON (id, plant_id, disease_name, steps, materials, etc.)
-    -   [ ] Cache response di Redis (TTL: 24 jam)
+    -   [x] Query dari Supabase dengan error handling
+    -   [x] Return structured JSON (id, plant_id, disease_name, steps, materials, etc.)
+    -   [x] Cache response di Redis (TTL: 24 jam)
 
--   [ ] Implementasi endpoint `GET /api/guides/by-plant/{plant_id}`
+-   [x] Implementasi endpoint `GET /api/guides/by-plant/{plant_id}`
 
-    -   [ ] Query multiple guides untuk satu tanaman
-    -   [ ] Filter by disease_name (optional query param)
-    -   [ ] Pagination support (limit, offset)
+    -   [x] Query multiple guides untuk satu tanaman
+    -   [x] Filter by disease_name (optional query param)
+    -   [x] Pagination support (limit, offset)
 
--   [ ] Error handling:
-    -   [ ] 404 jika guide tidak ditemukan
-    -   [ ] 500 dengan message jelas jika database error
-    -   [ ] Rate limiting (100 requests/minute per user)
+-   [x] Error handling:
+    -   [x] 404 jika guide tidak ditemukan
+    -   [x] 500 dengan message jelas jika database error
+    -   [x] Rate limiting (100 requests/minute per user)
 
 **Acceptance Criteria:**
 
--   Endpoint mengembalikan JSON terstruktur sesuai schema
--   Cache berfungsi dengan TTL yang tepat
--   Error handling lengkap dengan status code yang sesuai
--   Response time < 500ms untuk cached requests
+-   ✅ Endpoint mengembalikan JSON terstruktur sesuai schema
+-   ✅ Cache berfungsi dengan TTL yang tepat
+-   ✅ Error handling lengkap dengan status code yang sesuai
+-   ✅ Response time < 500ms untuk cached requests
+
+**Implementation Summary:**
+
+-   ✅ Created Pydantic models in `backend/models/treatment_guide.py`
+-   ✅ Implemented GuideService in `backend/services/guide_service.py` dengan Supabase REST API
+-   ✅ Implemented CacheService in `backend/services/cache_service.py` dengan Redis + in-memory fallback
+-   ✅ Created API routes in `backend/routes/guides.py`
+-   ✅ Integrated routes ke main.py dengan slowapi rate limiting
+-   ✅ Updated requirements.txt: slowapi==0.1.9, pydantic>=2.9.0
+-   ✅ Supabase credentials sudah dikonfigurasi di .env
+
+**Files Created:**
+
+-   `backend/models/__init__.py`
+-   `backend/models/treatment_guide.py`
+-   `backend/services/__init__.py`
+-   `backend/services/guide_service.py`
+-   `backend/services/cache_service.py`
+-   `backend/routes/guides.py`
 
 **API Response Example:**
 
