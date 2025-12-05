@@ -110,9 +110,9 @@ class GuideService:
         disease_name: Optional[str] = None,
         limit: int = 10,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], int]:
         """
-        Get all treatment guides for a specific plant.
+        Get all treatment guides for a specific plant with total count.
 
         Args:
             plant_id: Plant identifier
@@ -121,7 +121,7 @@ class GuideService:
             offset: Number of results to skip for pagination
 
         Returns:
-            List of guide data dictionaries
+            Tuple of (list of guide data dictionaries, total count)
 
         Raises:
             HTTPException: If database error occurs
@@ -142,22 +142,45 @@ class GuideService:
             if disease_name:
                 params["disease_name"] = f"ilike.%{disease_name}%"
 
+            # Add Prefer header to get total count
+            headers_with_count = {
+                **self.headers,
+                "Prefer": "count=exact"
+            }
+
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/treatment_guides",
-                    headers=self.headers,
+                    headers=headers_with_count,
                     params=params,
                 )
 
-                if response.status_code == 200:
+                # Supabase returns 206 Partial Content when using Prefer: count=exact
+                # with pagination, or 200 OK otherwise. Both are success cases.
+                if response.status_code in (200, 206):
                     guides = response.json()
+                    
+                    # Extract total count from Content-Range header
+                    # Format: "0-9/42" means items 0-9 out of total 42
+                    content_range = response.headers.get("Content-Range", "")
+                    total_count = 0
+                    if content_range:
+                        # Parse "0-9/42" -> extract "42"
+                        parts = content_range.split("/")
+                        if len(parts) == 2:
+                            total_count = int(parts[1])
+                    else:
+                        # Fallback: if no Content-Range header, use response length
+                        total_count = len(guides)
+                    
                     # Parse JSONB fields for each guide
                     for guide in guides:
                         if isinstance(guide.get("steps"), str):
                             guide["steps"] = json.loads(guide["steps"])
                         if isinstance(guide.get("materials"), str):
                             guide["materials"] = json.loads(guide["materials"])
-                    return guides
+                    
+                    return guides, total_count
                 else:
                     logger.error(
                         f"Supabase error getting guides for plant {plant_id}: "

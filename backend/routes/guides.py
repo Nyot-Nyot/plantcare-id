@@ -133,7 +133,7 @@ async def get_guides_by_plant(
             f"(disease: {disease_name}, limit: {limit}, offset: {offset})"
         )
 
-        guides_data = await get_guide_service().get_guides_by_plant_id(
+        guides_data, total_count = await get_guide_service().get_guides_by_plant_id(
             plant_id=plant_id,
             disease_name=disease_name,
             limit=limit,
@@ -166,7 +166,7 @@ async def get_guides_by_plant(
         response_data = {
             "plant_id": plant_id,
             "disease_filter": disease_name,
-            "total_results": len(response_guides),
+            "total_results": total_count,
             "limit": limit,
             "offset": offset,
             "guides": response_guides,
