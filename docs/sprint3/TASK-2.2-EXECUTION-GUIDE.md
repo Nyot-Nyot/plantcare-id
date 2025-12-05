@@ -205,11 +205,18 @@ curl -X GET "http://localhost:8001/api/guides/by-plant/general?limit=5&offset=0"
 {
   "plant_id": "general",
   "disease_filter": "Leaf",
-  "total_results": 2,
-  "limit": 10,
+  "total_results": 4,  # Total count of ALL matching guides (not just current page)
+  "limit": 5,
   "offset": 0,
-  "guides": [...]
+  "guides": [...]  # Array of 4 guides (or fewer if total < limit)
 }
+
+# Pagination metadata:
+# - total_results: Total count from database (uses Supabase Content-Range header)
+# - guides.length: Number of items in current page (≤ limit)
+# - total_pages: ceil(total_results / limit)
+# - has_next: (offset + limit) < total_results
+# - has_prev: offset > 0
 ```
 
 **3. Test Error Handling**
