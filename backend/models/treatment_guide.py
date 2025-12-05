@@ -6,6 +6,46 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+# Configuration constants
+MAX_TREATMENT_STEPS = 20  # Maximum number of steps in a treatment guide
+# Rationale: Complex treatments (e.g., severe root rot, pest infestations)
+# may require 15+ steps including preparation, treatment phases, and recovery.
+# Increased from 10 to 20 to accommodate comprehensive guides without being excessive.
+
+
+def validate_sequential_steps(steps: Optional[List["GuideStep"]]) -> Optional[List["GuideStep"]]:
+    """
+    Validate that step numbers are sequential starting from 1.
+
+    This is a reusable validator function used by both TreatmentGuideBase
+    and TreatmentGuideUpdate to ensure consistency.
+
+    Args:
+        steps: List of guide steps or None
+
+    Returns:
+        The validated steps list or None
+
+    Raises:
+        ValueError: If steps are provided but not sequential from 1
+    """
+    if steps is None:
+        return None
+
+    if not steps:
+        raise ValueError("If providing steps, at least one step is required")
+
+    expected_numbers = list(range(1, len(steps) + 1))
+    actual_numbers = sorted([step.step_number for step in steps])
+
+    if actual_numbers != expected_numbers:
+        raise ValueError(
+            f"Step numbers must be sequential from 1 to {len(steps)}. "
+            f"Got: {actual_numbers}"
+        )
+
+    return steps
+
 
 class GuideStep(BaseModel):
     """Individual step in a treatment guide."""
@@ -61,7 +101,10 @@ class TreatmentGuideBase(BaseModel):
         ..., description="Type of guide"
     )
     steps: List[GuideStep] = Field(
-        ..., min_length=1, max_length=10, description="List of treatment steps"
+        ...,
+        min_length=1,
+        max_length=MAX_TREATMENT_STEPS,
+        description=f"List of treatment steps (max {MAX_TREATMENT_STEPS})",
     )
     materials: List[str] = Field(
         default_factory=list, description="All materials needed for the guide"
@@ -81,19 +124,7 @@ class TreatmentGuideBase(BaseModel):
     @classmethod
     def validate_step_numbers(cls, steps: List[GuideStep]) -> List[GuideStep]:
         """Ensure step numbers are sequential starting from 1."""
-        if not steps:
-            raise ValueError("At least one step is required")
-
-        expected_numbers = list(range(1, len(steps) + 1))
-        actual_numbers = sorted([step.step_number for step in steps])
-
-        if actual_numbers != expected_numbers:
-            raise ValueError(
-                f"Step numbers must be sequential from 1 to {len(steps)}. "
-                f"Got: {actual_numbers}"
-            )
-
-        return steps
+        return validate_sequential_steps(steps)  # type: ignore
 
 
 class TreatmentGuide(TreatmentGuideBase):
@@ -145,37 +176,33 @@ class TreatmentGuideUpdate(BaseModel):
     disease_name: Optional[str] = Field(None, max_length=200)
     severity: Optional[Literal["low", "medium", "high"]] = None
     guide_type: Optional[Literal["identification", "disease_treatment"]] = None
-    steps: Optional[List[GuideStep]] = Field(None, min_length=1, max_length=10)
+    steps: Optional[List[GuideStep]] = Field(
+        None,
+        min_length=1,
+        max_length=MAX_TREATMENT_STEPS,
+        description=f"List of treatment steps (max {MAX_TREATMENT_STEPS})",
+    )
     materials: Optional[List[str]] = None
     estimated_duration_minutes: Optional[int] = Field(None, ge=0)
     estimated_duration_text: Optional[str] = Field(None, max_length=100)
 
     @field_validator("steps")
     @classmethod
-    def validate_step_numbers(cls, steps: Optional[List[GuideStep]]) -> Optional[List[GuideStep]]:
+    def validate_step_numbers(
+        cls, steps: Optional[List[GuideStep]]
+    ) -> Optional[List[GuideStep]]:
         """Ensure step numbers are sequential starting from 1 if provided."""
-        if steps is None:
-            return None
-
-        if not steps:
-            raise ValueError("If providing steps, at least one step is required")
-
-        expected_numbers = list(range(1, len(steps) + 1))
-        actual_numbers = sorted([step.step_number for step in steps])
-
-        if actual_numbers != expected_numbers:
-            raise ValueError(
-                f"Step numbers must be sequential from 1 to {len(steps)}. "
-                f"Got: {actual_numbers}"
-            )
-
-        return steps
+        return validate_sequential_steps(steps)
 
 
 class TreatmentGuideResponse(BaseModel):
-    """API response model for treatment guide."""
+    """API response model for treatment guide.
 
-    id: str = Field(..., description="Guide UUID as string")
+    Uses proper types (UUID, datetime) which Pydantic automatically
+    serializes to string format in JSON responses.
+    """
+
+    id: UUID = Field(..., description="Guide UUID")
     plant_id: str
     disease_name: Optional[str]
     severity: str
@@ -184,8 +211,8 @@ class TreatmentGuideResponse(BaseModel):
     materials: List[str]
     estimated_duration_minutes: Optional[int]
     estimated_duration_text: Optional[str]
-    created_at: str = Field(..., description="ISO format timestamp")
-    updated_at: str = Field(..., description="ISO format timestamp")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
 
     class Config:
         json_schema_extra = {

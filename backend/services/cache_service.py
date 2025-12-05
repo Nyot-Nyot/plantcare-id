@@ -9,8 +9,11 @@ from dotenv import load_dotenv
 
 try:
     import redis.asyncio as aioredis  # type: ignore
+    from redis.exceptions import RedisError, ConnectionError as RedisConnectionError
 except ImportError:
     aioredis = None
+    RedisError = Exception  # Fallback type for type hints
+    RedisConnectionError = Exception
 
 load_dotenv()
 
@@ -38,9 +41,15 @@ class CacheService:
                     decode_responses=True,
                 )
                 logger.info("Redis cache initialized successfully")
-            except Exception as e:
+            except (RedisConnectionError, ValueError) as e:
                 logger.warning(
-                    f"Failed to initialize Redis, using in-memory cache: {e}"
+                    f"Failed to initialize Redis (connection/config error), using in-memory cache: {e}"
+                )
+                self.redis_client = None
+            except Exception as e:
+                # Catch unexpected errors during initialization
+                logger.error(
+                    f"Unexpected error initializing Redis, using in-memory cache: {type(e).__name__}: {e}"
                 )
                 self.redis_client = None
         else:
@@ -64,7 +73,13 @@ class CacheService:
                 value = await self.redis_client.get(key)
                 if value:
                     logger.debug(f"Cache HIT (Redis): {key}")
-                    return json.loads(value)
+                    try:
+                        return json.loads(value)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Invalid JSON in cache for key {key}: {e}")
+                        # Delete corrupted cache entry
+                        await self.redis_client.delete(key)
+                        return None
                 logger.debug(f"Cache MISS (Redis): {key}")
                 return None
             else:
@@ -83,8 +98,14 @@ class CacheService:
                 logger.debug(f"Cache MISS (memory): {key}")
                 return None
 
+        except RedisConnectionError as e:
+            logger.error(f"Redis connection error getting key {key}: {e}")
+            return None
+        except RedisError as e:
+            logger.error(f"Redis error getting key {key}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error getting from cache ({key}): {e}")
+            logger.error(f"Unexpected error getting from cache ({key}): {type(e).__name__}: {e}")
             return None
 
     async def set(
@@ -104,7 +125,12 @@ class CacheService:
         try:
             if self.redis_client:
                 # Use Redis
-                json_value = json.dumps(value)
+                try:
+                    json_value = json.dumps(value)
+                except (TypeError, ValueError) as e:
+                    logger.error(f"Cannot JSON serialize value for key {key}: {e}")
+                    return False
+
                 await self.redis_client.set(key, json_value, ex=ttl_seconds)
                 logger.debug(
                     f"Cache SET (Redis): {key} (TTL: {ttl_seconds}s)"
@@ -121,8 +147,14 @@ class CacheService:
                 )
                 return True
 
+        except RedisConnectionError as e:
+            logger.error(f"Redis connection error setting key {key}: {e}")
+            return False
+        except RedisError as e:
+            logger.error(f"Redis error setting key {key}: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error setting cache ({key}): {e}")
+            logger.error(f"Unexpected error setting cache ({key}): {type(e).__name__}: {e}")
             return False
 
     async def delete(self, key: str) -> bool:
@@ -148,8 +180,14 @@ class CacheService:
                     logger.debug(f"Cache DELETE (memory): {key}")
                 return True
 
+        except RedisConnectionError as e:
+            logger.error(f"Redis connection error deleting key {key}: {e}")
+            return False
+        except RedisError as e:
+            logger.error(f"Redis error deleting key {key}: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error deleting from cache ({key}): {e}")
+            logger.error(f"Unexpected error deleting from cache ({key}): {type(e).__name__}: {e}")
             return False
 
     async def invalidate_pattern(self, pattern: str) -> int:
@@ -187,8 +225,14 @@ class CacheService:
                 )
                 return len(keys_to_delete)
 
+        except RedisConnectionError as e:
+            logger.error(f"Redis connection error invalidating pattern {pattern}: {e}")
+            return 0
+        except RedisError as e:
+            logger.error(f"Redis error invalidating pattern {pattern}: {e}")
+            return 0
         except Exception as e:
-            logger.error(f"Error invalidating pattern ({pattern}): {e}")
+            logger.error(f"Unexpected error invalidating pattern ({pattern}): {type(e).__name__}: {e}")
             return 0
 
     def _match_pattern(self, key: str, pattern: str) -> bool:
@@ -204,8 +248,12 @@ class CacheService:
             try:
                 await self.redis_client.close()
                 logger.info("Redis connection closed")
+            except RedisConnectionError as e:
+                logger.error(f"Redis connection error during close: {e}")
+            except RedisError as e:
+                logger.error(f"Redis error closing connection: {e}")
             except Exception as e:
-                logger.error(f"Error closing Redis connection: {e}")
+                logger.error(f"Unexpected error closing Redis connection: {type(e).__name__}: {e}")
 
 
 # Global cache instance
