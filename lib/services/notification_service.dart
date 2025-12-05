@@ -1,24 +1,38 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
+  FirebaseMessaging? _firebaseMessaging;
   final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
   bool _isInitialized = false;
+  bool _firebaseAvailable = false;
 
   /// Inisialisasi service notifikasi
   Future<void> initialize() async {
     if (_isInitialized) return;
+
+    // Check if Firebase is available
+    try {
+      await Firebase.initializeApp();
+      _firebaseMessaging = FirebaseMessaging.instance;
+      _firebaseAvailable = true;
+      debugPrint('✅ Firebase Messaging available');
+    } catch (e) {
+      debugPrint('⚠️ Firebase not available, FCM features disabled: $e');
+      _firebaseAvailable = false;
+    }
 
     // Inisialisasi timezone untuk scheduled notifications
     tz.initializeTimeZones();
@@ -30,43 +44,50 @@ class NotificationService {
     // Konfigurasi untuk iOS
     const DarwinInitializationSettings initializationSettingsIOS =
         DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
 
     final InitializationSettings initializationSettings =
         InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
+          android: initializationSettingsAndroid,
+          iOS: initializationSettingsIOS,
+        );
 
     await _flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
-    // Request permission untuk Firebase Messaging
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    // Setup Firebase Messaging only if available
+    if (_firebaseAvailable && _firebaseMessaging != null) {
+      try {
+        // Request permission untuk Firebase Messaging
+        NotificationSettings settings = await _firebaseMessaging!
+            .requestPermission(alert: true, badge: true, sound: true);
 
-  debugPrint('Permission granted: ${settings.authorizationStatus}');
+        debugPrint('Permission granted: ${settings.authorizationStatus}');
 
-    // Setup handler untuk messages
-    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessageOpened);
-    FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
+        // Setup handler untuk messages
+        FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+        FirebaseMessaging.onMessageOpenedApp.listen(
+          _handleBackgroundMessageOpened,
+        );
+        FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
 
-    // Dapatkan token FCM
-  String? token = await _firebaseMessaging.getToken();
-  debugPrint('FCM Token: $token');
+        // Dapatkan token FCM
+        String? token = await _firebaseMessaging!.getToken();
+        debugPrint('FCM Token: $token');
+      } catch (e) {
+        debugPrint('⚠️ Firebase Messaging setup failed: $e');
+        _firebaseAvailable = false;
+      }
+    }
 
     _isInitialized = true;
   }
 
   /// Handle pesan ketika aplikasi di foreground
   void _handleForegroundMessage(RemoteMessage message) {
-  debugPrint('Foreground message: ${message.notification?.title}');
+    debugPrint('Foreground message: ${message.notification?.title}');
     _showLocalNotification(
       id: message.hashCode,
       title: message.notification?.title ?? 'PlantCare ID',
@@ -77,7 +98,7 @@ class NotificationService {
 
   /// Handle pesan ketika aplikasi di background
   static Future<void> _handleBackgroundMessage(RemoteMessage message) async {
-  debugPrint('Background message: ${message.notification?.title}');
+    debugPrint('Background message: ${message.notification?.title}');
     // Karena static method, kita tidak bisa akses instance method langsung
     // Jadi kita buat instance baru untuk menampilkan notifikasi
     final notificationService = NotificationService();
@@ -91,7 +112,7 @@ class NotificationService {
 
   /// Handle ketika notifikasi di-tap dan aplikasi terbuka dari background
   void _handleBackgroundMessageOpened(RemoteMessage message) {
-  debugPrint('Message opened from background: ${message.data}');
+    debugPrint('Message opened from background: ${message.data}');
     // Navigasi ke halaman yang sesuai berdasarkan payload
     // TODO: Implement navigation based on payload
   }
@@ -105,22 +126,22 @@ class NotificationService {
   }) async {
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'plantcare_channel_id',
-      'PlantCare Notifications',
-      channelDescription: 'Notifikasi untuk perawatan tanaman',
-      importance: Importance.high,
-      priority: Priority.high,
-      ticker: 'ticker',
-      enableVibration: true,
-      playSound: true,
-    );
+          'plantcare_channel_id',
+          'PlantCare Notifications',
+          channelDescription: 'Notifikasi untuk perawatan tanaman',
+          importance: Importance.high,
+          priority: Priority.high,
+          ticker: 'ticker',
+          enableVibration: true,
+          playSound: true,
+        );
 
     const DarwinNotificationDetails iOSPlatformChannelSpecifics =
         DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        );
 
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
@@ -150,12 +171,12 @@ class NotificationService {
 
     const AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'plantcare_schedule_id',
-      'PlantCare Schedule',
-      channelDescription: 'Jadwal perawatan tanaman',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
+          'plantcare_schedule_id',
+          'PlantCare Schedule',
+          channelDescription: 'Jadwal perawatan tanaman',
+          importance: Importance.high,
+          priority: Priority.high,
+        );
 
     const DarwinNotificationDetails iOSPlatformChannelSpecifics =
         DarwinNotificationDetails();
@@ -203,16 +224,34 @@ class NotificationService {
 
   /// Dapatkan FCM token
   Future<String?> getFCMToken() async {
-    return await _firebaseMessaging.getToken();
+    if (!_firebaseAvailable || _firebaseMessaging == null) {
+      debugPrint(
+        '⚠️ Firebase Messaging tidak tersedia, tidak dapat mendapatkan FCM token',
+      );
+      return null;
+    }
+    return await _firebaseMessaging!.getToken();
   }
 
   /// Subscribe ke topic untuk notifikasi broadcast
   Future<void> subscribeToTopic(String topic) async {
-    await _firebaseMessaging.subscribeToTopic(topic);
+    if (!_firebaseAvailable || _firebaseMessaging == null) {
+      debugPrint(
+        '⚠️ Firebase Messaging tidak tersedia, tidak dapat subscribe ke topic: $topic',
+      );
+      return;
+    }
+    await _firebaseMessaging!.subscribeToTopic(topic);
   }
 
   /// Unsubscribe dari topic
   Future<void> unsubscribeFromTopic(String topic) async {
-    await _firebaseMessaging.unsubscribeFromTopic(topic);
+    if (!_firebaseAvailable || _firebaseMessaging == null) {
+      debugPrint(
+        '⚠️ Firebase Messaging tidak tersedia, tidak dapat unsubscribe dari topic: $topic',
+      );
+      return;
+    }
+    await _firebaseMessaging!.unsubscribeFromTopic(topic);
   }
 }

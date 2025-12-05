@@ -16,8 +16,18 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp();
+  // Initialize Firebase (optional - skip if google-services.json not configured)
+  try {
+    await Firebase.initializeApp();
+    debugPrint('✅ Firebase initialized successfully');
+  } catch (e) {
+    debugPrint(
+      '⚠️ Firebase initialization failed (this is OK for development): $e',
+    );
+    debugPrint(
+      '   To enable Firebase: Add google-services.json to android/app/',
+    );
+  }
 
   // Prefetch camera list early to avoid platform-channel initialization
   // races that can cause the 'ProcessCameraProvider.getInstance' error
