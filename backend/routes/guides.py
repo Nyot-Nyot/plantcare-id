@@ -33,7 +33,7 @@ def get_guide_service() -> GuideService:
 
 
 @router.get("/{guide_id}", response_model=TreatmentGuideResponse)
-async def get_guide_by_id(guide_id: str):
+async def get_guide_by_id(guide_id: UUID):
     """
     Get a treatment guide by its ID.
 
@@ -45,33 +45,27 @@ async def get_guide_by_id(guide_id: str):
     - **Cache**: Response cached for 24 hours
     """
     try:
-        # Validate UUID format
-        try:
-            UUID(guide_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid UUID format: '{guide_id}'",
-            )
+        # Convert UUID to string for service layer
+        guide_id_str = str(guide_id)
 
         # Generate cache key
-        cache_key = f"guide:id:{guide_id}"
+        cache_key = f"guide:id:{guide_id_str}"
 
         # Try to get from cache first
         cached_guide = await cache_service.get(cache_key)
         if cached_guide:
-            logger.info(f"Returning cached guide: {guide_id}")
+            logger.info(f"Returning cached guide: {guide_id_str}")
             # Return Pydantic model instance from cached dict
             return TreatmentGuideResponse(**cached_guide)
 
         # Cache miss, fetch from database
-        logger.info(f"Fetching guide from database: {guide_id}")
-        guide = await get_guide_service().get_guide_by_id(guide_id)
+        logger.info(f"Fetching guide from database: {guide_id_str}")
+        guide = await get_guide_service().get_guide_by_id(guide_id_str)
 
         if not guide:
             raise HTTPException(
                 status_code=404,
-                detail=f"Treatment guide with ID '{guide_id}' not found",
+                detail=f"Treatment guide with ID '{guide_id_str}' not found",
             )
 
         # Convert Pydantic model to dict for caching
@@ -86,19 +80,19 @@ async def get_guide_by_id(guide_id: str):
     except HTTPException:
         raise
     except SupabaseError as e:
-        logger.error(f"Database error retrieving guide {guide_id}: {str(e)}")
+        logger.error(f"Database error retrieving guide {guide_id_str}: {str(e)}")
         raise HTTPException(
             status_code=503,
             detail="Database service temporarily unavailable",
         )
     except GuideServiceError as e:
-        logger.error(f"Service error retrieving guide {guide_id}: {str(e)}")
+        logger.error(f"Service error retrieving guide {guide_id_str}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="Internal server error while processing guide data",
         )
     except Exception as e:
-        logger.error(f"Unexpected error retrieving guide {guide_id}: {str(e)}")
+        logger.error(f"Unexpected error retrieving guide {guide_id_str}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="Internal server error while retrieving guide",
@@ -264,7 +258,7 @@ async def create_guide(
 
 @router.put("/{guide_id}", response_model=TreatmentGuideResponse)
 async def update_guide(
-    guide_id: str,
+    guide_id: UUID,
     guide_update: TreatmentGuideUpdate,
     current_user: str = Depends(verify_auth_token),
 ):
@@ -280,29 +274,23 @@ async def update_guide(
     - **Auth**: Requires authentication (Bearer token)
     """
     try:
-        # Validate UUID format
-        try:
-            UUID(guide_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid UUID format: '{guide_id}'",
-            )
+        # Convert UUID to string for service layer
+        guide_id_str = str(guide_id)
 
-        logger.info(f"Updating guide: {guide_id} (user: {current_user[:10]}...)")
+        logger.info(f"Updating guide: {guide_id_str} (user: {current_user[:10]}...)")
 
         # Update guide in database
-        updated_guide = await get_guide_service().update_guide(guide_id, guide_update)
+        updated_guide = await get_guide_service().update_guide(guide_id_str, guide_update)
 
         if not updated_guide:
             raise HTTPException(
                 status_code=404,
-                detail=f"Treatment guide with ID '{guide_id}' not found",
+                detail=f"Treatment guide with ID '{guide_id_str}' not found",
             )
 
         # Invalidate caches:
         # 1. Specific guide cache
-        guide_cache_key = f"guide:id:{guide_id}"
+        guide_cache_key = f"guide:id:{guide_id_str}"
         await cache_service.delete(guide_cache_key)
         logger.info(f"Invalidated guide cache: {guide_cache_key}")
 
@@ -321,20 +309,20 @@ async def update_guide(
     except HTTPException:
         raise
     except SupabaseError as e:
-        logger.error(f"Database error updating guide {guide_id}: {str(e)}")
+        logger.error(f"Database error updating guide {guide_id_str}: {str(e)}")
         raise HTTPException(
             status_code=503,
             detail="Database service temporarily unavailable",
         )
     except GuideServiceError as e:
-        logger.error(f"Service error updating guide {guide_id}: {str(e)}")
+        logger.error(f"Service error updating guide {guide_id_str}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="Internal server error while processing guide data",
         )
     except Exception as e:
         logger.error(
-            f"Unexpected error updating guide {guide_id}: {type(e).__name__}: {str(e)}"
+            f"Unexpected error updating guide {guide_id_str}: {type(e).__name__}: {str(e)}"
         )
         raise HTTPException(
             status_code=500,
@@ -344,7 +332,7 @@ async def update_guide(
 
 @router.delete("/{guide_id}", status_code=204)
 async def delete_guide(
-    guide_id: str,
+    guide_id: UUID,
     current_user: str = Depends(verify_auth_token),
 ):
     """
@@ -360,31 +348,25 @@ async def delete_guide(
     - **Auth**: Requires authentication (Bearer token)
     """
     try:
-        # Validate UUID format
-        try:
-            UUID(guide_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid UUID format: '{guide_id}'",
-            )
+        # Convert UUID to string for service layer
+        guide_id_str = str(guide_id)
 
-        logger.info(f"Deleting guide: {guide_id} (user: {current_user[:10]}...)")
+        logger.info(f"Deleting guide: {guide_id_str} (user: {current_user[:10]}...)")
 
         # Delete guide and get the deleted object (uses Prefer: return=representation)
         # This avoids race condition where guide could be modified between GET and DELETE
-        deleted_guide = await get_guide_service().delete_guide(guide_id)
+        deleted_guide = await get_guide_service().delete_guide(guide_id_str)
 
         if not deleted_guide:
             # Guide not found
             raise HTTPException(
                 status_code=404,
-                detail=f"Treatment guide with ID '{guide_id}' not found",
+                detail=f"Treatment guide with ID '{guide_id_str}' not found",
             )
 
         # Invalidate caches using plant_id from the deleted object:
         # 1. Specific guide cache
-        guide_cache_key = f"guide:id:{guide_id}"
+        guide_cache_key = f"guide:id:{guide_id_str}"
         await cache_service.delete(guide_cache_key)
         logger.info(f"Invalidated guide cache: {guide_cache_key}")
 
@@ -402,20 +384,20 @@ async def delete_guide(
     except HTTPException:
         raise
     except SupabaseError as e:
-        logger.error(f"Database error deleting guide {guide_id}: {str(e)}")
+        logger.error(f"Database error deleting guide {guide_id_str}: {str(e)}")
         raise HTTPException(
             status_code=503,
             detail="Database service temporarily unavailable",
         )
     except GuideServiceError as e:
-        logger.error(f"Service error deleting guide {guide_id}: {str(e)}")
+        logger.error(f"Service error deleting guide {guide_id_str}: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="Internal server error while processing guide data",
         )
     except Exception as e:
         logger.error(
-            f"Unexpected error deleting guide {guide_id}: {type(e).__name__}: {str(e)}"
+            f"Unexpected error deleting guide {guide_id_str}: {type(e).__name__}: {str(e)}"
         )
         raise HTTPException(
             status_code=500,
