@@ -252,26 +252,25 @@ class GuideService:
 
     async def create_guide(
         self, guide_data: TreatmentGuideCreate
-    ) -> Dict[str, Any]:
+    ) -> TreatmentGuide:
         """
         Create a new treatment guide.
 
         Args:
-            guide_data: Guide data to create
+            guide_data: TreatmentGuideCreate model instance with validated data
 
         Returns:
-            Created guide data
+            Created TreatmentGuide model instance
 
         Raises:
-            HTTPException: If database error occurs
+            SupabaseError: If database error occurs
+            GuideServiceError: If data parsing fails
         """
-        try:
-            # Convert Pydantic model to dict
-            data = guide_data.model_dump()
+        self._check_configured()
 
-            # Ensure JSONB fields are properly formatted
-            data["steps"] = [step.model_dump() for step in guide_data.steps]
-            data["materials"] = guide_data.materials
+        try:
+            # Convert Pydantic model to dict using mode="json" for proper serialization
+            data = guide_data.model_dump(mode="json")
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -281,20 +280,42 @@ class GuideService:
                 )
 
                 if response.status_code in [200, 201]:
-                    created_guide = response.json()
-                    if isinstance(created_guide, list):
-                        created_guide = created_guide[0]
-                    return created_guide
+                    created_data = response.json()
+
+                    # Extract first item if list
+                    guide_dict = created_data[0] if isinstance(created_data, list) else created_data
+
+                    # Parse response into TreatmentGuide model
+                    try:
+                        return TreatmentGuide(**guide_dict)
+                    except ValidationError as e:
+                        logger.error(f"Failed to parse created guide: {e}")
+                        raise GuideServiceError(
+                            f"Invalid guide data returned from database: {e}"
+                        )
+
                 else:
                     logger.error(
                         f"Supabase error creating guide: "
                         f"{response.status_code} - {response.text}"
                     )
-                    raise Exception(f"Database error: {response.status_code}")
+                    raise SupabaseError(
+                        f"Failed to create guide",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
 
-        except Exception as e:
-            logger.error(f"Error creating guide: {str(e)}")
+        except SupabaseError:
             raise
+        except GuideServiceError:
+            raise
+        except httpx.RequestError as e:
+            logger.error(f"Network error creating guide: {e}")
+            raise SupabaseError(f"Network error creating guide: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error creating guide: {type(e).__name__}: {e}")
+            raise GuideServiceError(f"Unexpected error creating guide: {e}")
+
 
     async def update_guide(
         self, guide_id: str, guide_update: TreatmentGuideUpdate
@@ -375,3 +396,64 @@ class GuideService:
         except Exception as e:
             logger.error(f"Unexpected error updating guide {guide_id}: {type(e).__name__}: {e}")
             raise GuideServiceError(f"Unexpected error updating guide: {e}")
+
+    async def delete_guide(self, guide_id: str) -> bool:
+        """
+        Delete a treatment guide (hard delete).
+
+        Args:
+            guide_id: UUID of the guide to delete
+
+        Returns:
+            True if deleted successfully, False if not found
+
+        Raises:
+            SupabaseError: If database error occurs
+        """
+        self._check_configured()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(
+                    f"{self.base_url}/treatment_guides",
+                    headers=self.headers,
+                    params={"id": f"eq.{guide_id}"},
+                )
+
+                if response.status_code in [200, 204]:
+                    # Check if any rows were deleted
+                    # Supabase returns empty array if nothing was deleted
+                    data = response.json() if response.text else []
+
+                    if not data or (isinstance(data, list) and len(data) == 0):
+                        # Guide not found
+                        return False
+
+                    logger.info(f"Successfully deleted guide {guide_id}")
+                    return True
+
+                elif response.status_code == 404:
+                    return False
+                else:
+                    logger.error(
+                        f"Supabase error deleting guide {guide_id}: "
+                        f"{response.status_code} - {response.text}"
+                    )
+                    raise SupabaseError(
+                        f"Failed to delete guide {guide_id}",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
+
+        except SupabaseError:
+            raise
+        except httpx.RequestError as e:
+            logger.error(f"Network error deleting guide {guide_id}: {e}")
+            raise SupabaseError(f"Network error deleting guide: {e}")
+        except Exception as e:
+            logger.error(
+                f"Unexpected error deleting guide {guide_id}: {type(e).__name__}: {e}"
+            )
+            raise GuideServiceError(f"Unexpected error deleting guide: {e}")
+
+

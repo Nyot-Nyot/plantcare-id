@@ -198,26 +198,48 @@
 **Estimasi:** 1.5 jam
 **Priority:** Medium
 
--   [ ] Implementasi endpoint `POST /api/guides`
+-   [x] Implementasi endpoint `POST /api/guides`
 
-    -   [ ] Validasi request body (steps array, materials, etc.)
-    -   [ ] Insert ke Supabase dengan timestamp
-    -   [ ] Invalidate cache untuk plant_id terkait
+    -   [x] Validasi request body (steps array, materials, etc.)
+    -   [x] Insert ke Supabase dengan timestamp
+    -   [x] Invalidate cache untuk plant_id terkait
 
--   [ ] Implementasi endpoint `PUT /api/guides/{guide_id}`
+-   [x] Implementasi endpoint `PUT /api/guides/{guide_id}`
 
-    -   [ ] Update guide dengan validation
-    -   [ ] Update `updated_at` timestamp
-    -   [ ] Invalidate cache
+    -   [x] Update guide dengan validation
+    -   [x] Update `updated_at` timestamp
+    -   [x] Invalidate cache
 
--   [ ] Authentication check (admin/authenticated user only)
+-   [x] Implementasi endpoint `DELETE /api/guides/{guide_id}` (bonus)
+
+    -   [x] Hard delete dari database
+    -   [x] Invalidate cache untuk guide_id dan plant_id
+
+-   [x] Authentication check (admin/authenticated user only)
 
 **Acceptance Criteria:**
 
--   Hanya authenticated users dapat create/update guides
--   Validation error mengembalikan 400 dengan detail error
--   Cache invalidation berfungsi setelah create/update
--   Timestamps updated correctly
+-   ✅ Hanya authenticated users dapat create/update guides
+-   ✅ Validation error mengembalikan 400 dengan detail error
+-   ✅ Cache invalidation berfungsi setelah create/update
+-   ✅ Timestamps updated correctly
+
+**Implementation Summary:**
+
+-   ✅ Created `backend/auth.py` with `verify_auth_token` dependency for authentication
+-   ✅ POST endpoint returns 201 with created guide
+-   ✅ PUT endpoint accepts partial updates (exclude_unset=True)
+-   ✅ DELETE endpoint returns 204 No Content
+-   ✅ All endpoints require Bearer token authentication
+-   ✅ Cache invalidation for both guide:id:{id} and guide:plant:{plant_id}:\* patterns
+-   ✅ Refactored `create_guide` service method to return TreatmentGuide model
+-   ✅ Refactored `delete_guide` service method for hard delete
+
+**Files Modified:**
+
+-   `backend/routes/guides.py` - Added POST, PUT, DELETE endpoints
+-   `backend/services/guide_service.py` - Refactored create_guide, added delete_guide
+-   `backend/auth.py` - Created authentication utilities
 
 ---
 

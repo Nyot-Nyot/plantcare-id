@@ -4,9 +4,15 @@ import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.models.treatment_guide import TreatmentGuideResponse, TreatmentGuideListResponse
+from backend.auth import verify_auth_token
+from backend.models.treatment_guide import (
+    TreatmentGuideResponse,
+    TreatmentGuideListResponse,
+    TreatmentGuideCreate,
+    TreatmentGuideUpdate,
+)
 from backend.services.cache_service import cache_service
 from backend.services.guide_service import GuideService, SupabaseError, GuideServiceError
 
@@ -198,3 +204,229 @@ async def get_guides_by_plant(
             status_code=500,
             detail="Internal server error while retrieving guides",
         )
+
+
+@router.post("", response_model=TreatmentGuideResponse, status_code=201)
+async def create_guide(
+    guide_data: TreatmentGuideCreate,
+    current_user: str = Depends(verify_auth_token),
+):
+    """
+    Create a new treatment guide.
+
+    This endpoint creates a new treatment guide with validation,
+    stores it in Supabase, and invalidates relevant caches.
+
+    - **guide_data**: Complete guide information including steps
+    - **Returns**: Created guide with assigned ID and timestamps
+    - **Auth**: Requires authentication (Bearer token)
+    """
+    try:
+        logger.info(
+            f"Creating new guide for plant_id: {guide_data.plant_id} "
+            f"(user: {current_user[:10]}...)"
+        )
+
+        # Create guide in database
+        created_guide = await get_guide_service().create_guide(guide_data)
+
+        # Invalidate cache for this plant_id (all related guides are now stale)
+        # Pattern matches: guide:plant:{plant_id}:*
+        invalidated_count = await cache_service.invalidate_pattern(
+            f"guide:plant:{guide_data.plant_id}:*"
+        )
+        logger.info(
+            f"Invalidated {invalidated_count} cache entries for plant_id: {guide_data.plant_id}"
+        )
+
+        # Return the created guide as response model
+        return TreatmentGuideResponse(**created_guide.model_dump(mode="json"))
+
+    except SupabaseError as e:
+        logger.error(f"Database error creating guide: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Database service temporarily unavailable",
+        )
+    except GuideServiceError as e:
+        logger.error(f"Service error creating guide: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while processing guide data",
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error creating guide: {type(e).__name__}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while creating guide",
+        )
+
+
+@router.put("/{guide_id}", response_model=TreatmentGuideResponse)
+async def update_guide(
+    guide_id: str,
+    guide_update: TreatmentGuideUpdate,
+    current_user: str = Depends(verify_auth_token),
+):
+    """
+    Update an existing treatment guide.
+
+    This endpoint updates a guide with the provided fields,
+    stores changes in Supabase, and invalidates relevant caches.
+
+    - **guide_id**: UUID of the guide to update
+    - **guide_update**: Fields to update (all optional)
+    - **Returns**: Updated guide information
+    - **Auth**: Requires authentication (Bearer token)
+    """
+    try:
+        # Validate UUID format
+        try:
+            UUID(guide_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid UUID format: '{guide_id}'",
+            )
+
+        logger.info(f"Updating guide: {guide_id} (user: {current_user[:10]}...)")
+
+        # Update guide in database
+        updated_guide = await get_guide_service().update_guide(guide_id, guide_update)
+
+        if not updated_guide:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Treatment guide with ID '{guide_id}' not found",
+            )
+
+        # Invalidate caches:
+        # 1. Specific guide cache
+        guide_cache_key = f"guide:id:{guide_id}"
+        await cache_service.delete(guide_cache_key)
+        logger.info(f"Invalidated guide cache: {guide_cache_key}")
+
+        # 2. Plant-related guides cache (in case plant_id changed or for existing plant_id)
+        # Get the plant_id from the updated guide to invalidate its cache
+        invalidated_count = await cache_service.invalidate_pattern(
+            f"guide:plant:{updated_guide.plant_id}:*"
+        )
+        logger.info(
+            f"Invalidated {invalidated_count} cache entries for plant_id: {updated_guide.plant_id}"
+        )
+
+        # Return the updated guide
+        return TreatmentGuideResponse(**updated_guide.model_dump(mode="json"))
+
+    except HTTPException:
+        raise
+    except SupabaseError as e:
+        logger.error(f"Database error updating guide {guide_id}: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Database service temporarily unavailable",
+        )
+    except GuideServiceError as e:
+        logger.error(f"Service error updating guide {guide_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while processing guide data",
+        )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error updating guide {guide_id}: {type(e).__name__}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while updating guide",
+        )
+
+
+@router.delete("/{guide_id}", status_code=204)
+async def delete_guide(
+    guide_id: str,
+    current_user: str = Depends(verify_auth_token),
+):
+    """
+    Delete a treatment guide (hard delete).
+
+    This endpoint permanently deletes a guide from Supabase
+    and invalidates all relevant caches.
+
+    - **guide_id**: UUID of the guide to delete
+    - **Returns**: 204 No Content on success
+    - **Auth**: Requires authentication (Bearer token)
+    """
+    try:
+        # Validate UUID format
+        try:
+            UUID(guide_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid UUID format: '{guide_id}'",
+            )
+
+        logger.info(f"Deleting guide: {guide_id} (user: {current_user[:10]}...)")
+
+        # First, get the guide to know its plant_id (for cache invalidation)
+        existing_guide = await get_guide_service().get_guide_by_id(guide_id)
+
+        if not existing_guide:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Treatment guide with ID '{guide_id}' not found",
+            )
+
+        # Delete guide in database
+        deleted = await get_guide_service().delete_guide(guide_id)
+
+        if not deleted:
+            # This shouldn't happen since we just checked, but handle it anyway
+            raise HTTPException(
+                status_code=404,
+                detail=f"Treatment guide with ID '{guide_id}' not found",
+            )
+
+        # Invalidate caches:
+        # 1. Specific guide cache
+        guide_cache_key = f"guide:id:{guide_id}"
+        await cache_service.delete(guide_cache_key)
+        logger.info(f"Invalidated guide cache: {guide_cache_key}")
+
+        # 2. Plant-related guides cache
+        invalidated_count = await cache_service.invalidate_pattern(
+            f"guide:plant:{existing_guide.plant_id}:*"
+        )
+        logger.info(
+            f"Invalidated {invalidated_count} cache entries for plant_id: {existing_guide.plant_id}"
+        )
+
+        # Return 204 No Content (no response body)
+        return None
+
+    except HTTPException:
+        raise
+    except SupabaseError as e:
+        logger.error(f"Database error deleting guide {guide_id}: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Database service temporarily unavailable",
+        )
+    except GuideServiceError as e:
+        logger.error(f"Service error deleting guide {guide_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while processing guide data",
+        )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error deleting guide {guide_id}: {type(e).__name__}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while deleting guide",
+        )
+
+
+
