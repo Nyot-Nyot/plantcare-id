@@ -8,12 +8,27 @@ from uuid import UUID
 
 import httpx
 from dotenv import load_dotenv
+from pydantic import ValidationError
 
 from backend.models.treatment_guide import TreatmentGuide, TreatmentGuideCreate
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+class SupabaseError(Exception):
+    """Custom exception for Supabase database errors."""
+
+    def __init__(self, message: str, status_code: int = None, response_text: str = None):
+        self.status_code = status_code
+        self.response_text = response_text
+        super().__init__(message)
+
+
+class GuideServiceError(Exception):
+    """Custom exception for GuideService errors."""
+    pass
 
 
 class GuideService:
@@ -58,7 +73,7 @@ class GuideService:
                 "SUPABASE_URL and SUPABASE_ANON_KEY must be set."
             )
 
-    async def get_guide_by_id(self, guide_id: str) -> Optional[Dict[str, Any]]:
+    async def get_guide_by_id(self, guide_id: str) -> Optional[TreatmentGuide]:
         """
         Get a treatment guide by its UUID.
 
@@ -66,10 +81,11 @@ class GuideService:
             guide_id: UUID of the guide
 
         Returns:
-            Guide data as dict or None if not found
+            TreatmentGuide model instance or None if not found
 
         Raises:
-            HTTPException: If database error occurs
+            SupabaseError: If database error occurs
+            GuideServiceError: If data parsing fails
         """
         self._check_configured()
         try:
@@ -82,14 +98,26 @@ class GuideService:
 
                 if response.status_code == 200:
                     data = response.json()
-                    if data:
+                    if data and len(data) > 0:
                         guide_data = data[0]
-                        # Parse JSONB fields
+                        # Parse JSONB fields if they're strings
                         if isinstance(guide_data.get("steps"), str):
                             guide_data["steps"] = json.loads(guide_data["steps"])
                         if isinstance(guide_data.get("materials"), str):
-                            guide_data["materials"] = json.loads(guide_data["materials"])
-                        return guide_data
+                            guide_data["materials"] = json.loads(
+                                guide_data["materials"]
+                            )
+
+                        # Parse into Pydantic model for type safety
+                        try:
+                            return TreatmentGuide(**guide_data)
+                        except ValidationError as e:
+                            logger.error(
+                                f"Failed to parse guide {guide_id} into model: {e}"
+                            )
+                            raise GuideServiceError(
+                                f"Invalid guide data from database: {e}"
+                            )
                     return None
                 elif response.status_code == 404:
                     return None
@@ -98,11 +126,17 @@ class GuideService:
                         f"Supabase error getting guide {guide_id}: "
                         f"{response.status_code} - {response.text}"
                     )
-                    raise Exception(f"Database error: {response.status_code}")
+                    raise SupabaseError(
+                        f"Database error while fetching guide",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
 
-        except Exception as e:
-            logger.error(f"Error getting guide by ID {guide_id}: {str(e)}")
+        except (SupabaseError, GuideServiceError):
             raise
+        except Exception as e:
+            logger.error(f"Unexpected error getting guide by ID {guide_id}: {str(e)}")
+            raise GuideServiceError(f"Failed to fetch guide: {str(e)}")
 
     async def get_guides_by_plant_id(
         self,
@@ -110,7 +144,7 @@ class GuideService:
         disease_name: Optional[str] = None,
         limit: int = 10,
         offset: int = 0,
-    ) -> tuple[List[Dict[str, Any]], int]:
+    ) -> tuple[List[TreatmentGuide], int]:
         """
         Get all treatment guides for a specific plant with total count.
 
@@ -121,10 +155,11 @@ class GuideService:
             offset: Number of results to skip for pagination
 
         Returns:
-            Tuple of (list of guide data dictionaries, total count)
+            Tuple of (list of TreatmentGuide models, total count)
 
         Raises:
-            HTTPException: If database error occurs
+            SupabaseError: If database error occurs
+            GuideServiceError: If data parsing fails
         """
         self._check_configured()
         try:
@@ -143,10 +178,7 @@ class GuideService:
                 params["disease_name"] = f"ilike.%{disease_name}%"
 
             # Add Prefer header to get total count
-            headers_with_count = {
-                **self.headers,
-                "Prefer": "count=exact"
-            }
+            headers_with_count = {**self.headers, "Prefer": "count=exact"}
 
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -158,8 +190,8 @@ class GuideService:
                 # Supabase returns 206 Partial Content when using Prefer: count=exact
                 # with pagination, or 200 OK otherwise. Both are success cases.
                 if response.status_code in (200, 206):
-                    guides = response.json()
-                    
+                    guides_data = response.json()
+
                     # Extract total count from Content-Range header
                     # Format: "0-9/42" means items 0-9 out of total 42
                     content_range = response.headers.get("Content-Range", "")
@@ -171,28 +203,48 @@ class GuideService:
                             total_count = int(parts[1])
                     else:
                         # Fallback: if no Content-Range header, use response length
-                        total_count = len(guides)
-                    
-                    # Parse JSONB fields for each guide
-                    for guide in guides:
-                        if isinstance(guide.get("steps"), str):
-                            guide["steps"] = json.loads(guide["steps"])
-                        if isinstance(guide.get("materials"), str):
-                            guide["materials"] = json.loads(guide["materials"])
-                    
+                        total_count = len(guides_data)
+
+                    # Parse JSONB fields and convert to Pydantic models
+                    guides = []
+                    for guide_data in guides_data:
+                        # Parse JSONB fields if they're strings
+                        if isinstance(guide_data.get("steps"), str):
+                            guide_data["steps"] = json.loads(guide_data["steps"])
+                        if isinstance(guide_data.get("materials"), str):
+                            guide_data["materials"] = json.loads(
+                                guide_data["materials"]
+                            )
+
+                        # Parse into Pydantic model for type safety
+                        try:
+                            guides.append(TreatmentGuide(**guide_data))
+                        except ValidationError as e:
+                            logger.warning(
+                                f"Skipping invalid guide data for plant {plant_id}: {e}"
+                            )
+                            # Continue processing other guides instead of failing completely
+                            continue
+
                     return guides, total_count
                 else:
                     logger.error(
                         f"Supabase error getting guides for plant {plant_id}: "
                         f"{response.status_code} - {response.text}"
                     )
-                    raise Exception(f"Database error: {response.status_code}")
+                    raise SupabaseError(
+                        f"Database error while fetching guides",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
 
+        except SupabaseError:
+            raise
         except Exception as e:
             logger.error(
-                f"Error getting guides for plant {plant_id}: {str(e)}"
+                f"Unexpected error getting guides for plant {plant_id}: {str(e)}"
             )
-            raise
+            raise GuideServiceError(f"Failed to fetch guides: {str(e)}")
 
     async def create_guide(
         self, guide_data: TreatmentGuideCreate

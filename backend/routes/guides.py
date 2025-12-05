@@ -2,13 +2,14 @@
 
 import logging
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from backend.models.treatment_guide import TreatmentGuideResponse
 from backend.services.cache_service import cache_service
-from backend.services.guide_service import GuideService
+from backend.services.guide_service import GuideService, SupabaseError, GuideServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,15 @@ async def get_guide_by_id(guide_id: str):
     - **Cache**: Response cached for 24 hours
     """
     try:
+        # Validate UUID format
+        try:
+            UUID(guide_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid UUID format: '{guide_id}'",
+            )
+
         # Generate cache key
         cache_key = f"guide:id:{guide_id}"
 
@@ -50,32 +60,16 @@ async def get_guide_by_id(guide_id: str):
 
         # Cache miss, fetch from database
         logger.info(f"Fetching guide from database: {guide_id}")
-        guide_data = await get_guide_service().get_guide_by_id(guide_id)
+        guide = await get_guide_service().get_guide_by_id(guide_id)
 
-        if not guide_data:
+        if not guide:
             raise HTTPException(
                 status_code=404,
                 detail=f"Treatment guide with ID '{guide_id}' not found",
             )
 
-        # Convert to response format
-        response_data = {
-            "id": str(guide_data["id"]),
-            "plant_id": guide_data["plant_id"],
-            "disease_name": guide_data.get("disease_name"),
-            "severity": guide_data["severity"],
-            "guide_type": guide_data["guide_type"],
-            "steps": guide_data["steps"],
-            "materials": guide_data.get("materials", []),
-            "estimated_duration_minutes": guide_data.get(
-                "estimated_duration_minutes"
-            ),
-            "estimated_duration_text": guide_data.get(
-                "estimated_duration_text"
-            ),
-            "created_at": guide_data["created_at"],
-            "updated_at": guide_data["updated_at"],
-        }
+        # Convert Pydantic model to dict for JSON response
+        response_data = guide.model_dump(mode="json")
 
         # Cache the response for 24 hours (86400 seconds)
         await cache_service.set(cache_key, response_data, ttl_seconds=86400)
@@ -84,11 +78,23 @@ async def get_guide_by_id(guide_id: str):
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error retrieving guide {guide_id}: {str(e)}")
+    except SupabaseError as e:
+        logger.error(f"Database error retrieving guide {guide_id}: {str(e)}")
+        raise HTTPException(
+            status_code=503,
+            detail="Database service temporarily unavailable",
+        )
+    except GuideServiceError as e:
+        logger.error(f"Service error retrieving guide {guide_id}: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error while retrieving guide: {str(e)}",
+            detail="Internal server error while processing guide data",
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving guide {guide_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while retrieving guide",
         )
 
 
@@ -133,35 +139,15 @@ async def get_guides_by_plant(
             f"(disease: {disease_name}, limit: {limit}, offset: {offset})"
         )
 
-        guides_data, total_count = await get_guide_service().get_guides_by_plant_id(
+        guides, total_count = await get_guide_service().get_guides_by_plant_id(
             plant_id=plant_id,
             disease_name=disease_name,
             limit=limit,
             offset=offset,
         )
 
-        # Convert to response format
-        response_guides = []
-        for guide in guides_data:
-            response_guides.append(
-                {
-                    "id": str(guide["id"]),
-                    "plant_id": guide["plant_id"],
-                    "disease_name": guide.get("disease_name"),
-                    "severity": guide["severity"],
-                    "guide_type": guide["guide_type"],
-                    "steps": guide["steps"],
-                    "materials": guide.get("materials", []),
-                    "estimated_duration_minutes": guide.get(
-                        "estimated_duration_minutes"
-                    ),
-                    "estimated_duration_text": guide.get(
-                        "estimated_duration_text"
-                    ),
-                    "created_at": guide["created_at"],
-                    "updated_at": guide["updated_at"],
-                }
-            )
+        # Convert Pydantic models to dicts for JSON response
+        response_guides = [guide.model_dump(mode="json") for guide in guides]
 
         response_data = {
             "plant_id": plant_id,
@@ -177,11 +163,29 @@ async def get_guides_by_plant(
 
         return JSONResponse(content=response_data)
 
-    except Exception as e:
+    except HTTPException:
+        raise
+    except SupabaseError as e:
         logger.error(
-            f"Error retrieving guides for plant {plant_id}: {str(e)}"
+            f"Database error retrieving guides for plant {plant_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Database service temporarily unavailable",
+        )
+    except GuideServiceError as e:
+        logger.error(
+            f"Service error retrieving guides for plant {plant_id}: {str(e)}"
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error while retrieving guides: {str(e)}",
+            detail="Internal server error while processing guides data",
+        )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error retrieving guides for plant {plant_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error while retrieving guides",
         )
