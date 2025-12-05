@@ -5,5 +5,6 @@
 		"${workspaceFolder}/backend/.venv/lib/python3.13/site-packages"
 	],
 	"python.analysis.autoImportCompletions": true,
-	"cmake.ignoreCMakeListsMissing": true
+	"cmake.ignoreCMakeListsMissing": true,
+	"python-envs.pythonProjects": []
 }
