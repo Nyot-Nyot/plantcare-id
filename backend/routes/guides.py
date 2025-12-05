@@ -5,9 +5,8 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse
 
-from backend.models.treatment_guide import TreatmentGuideResponse
+from backend.models.treatment_guide import TreatmentGuideResponse, TreatmentGuideListResponse
 from backend.services.cache_service import cache_service
 from backend.services.guide_service import GuideService, SupabaseError, GuideServiceError
 
@@ -56,7 +55,8 @@ async def get_guide_by_id(guide_id: str):
         cached_guide = await cache_service.get(cache_key)
         if cached_guide:
             logger.info(f"Returning cached guide: {guide_id}")
-            return JSONResponse(content=cached_guide)
+            # Return Pydantic model instance from cached dict
+            return TreatmentGuideResponse(**cached_guide)
 
         # Cache miss, fetch from database
         logger.info(f"Fetching guide from database: {guide_id}")
@@ -68,13 +68,14 @@ async def get_guide_by_id(guide_id: str):
                 detail=f"Treatment guide with ID '{guide_id}' not found",
             )
 
-        # Convert Pydantic model to dict for JSON response
+        # Convert Pydantic model to dict for caching
         response_data = guide.model_dump(mode="json")
 
         # Cache the response for 24 hours (86400 seconds)
         await cache_service.set(cache_key, response_data, ttl_seconds=86400)
 
-        return JSONResponse(content=response_data)
+        # Return Pydantic model instance (FastAPI handles serialization)
+        return TreatmentGuideResponse(**response_data)
 
     except HTTPException:
         raise
@@ -98,7 +99,7 @@ async def get_guide_by_id(guide_id: str):
         )
 
 
-@router.get("/by-plant/{plant_id}")
+@router.get("/by-plant/{plant_id}", response_model=TreatmentGuideListResponse)
 async def get_guides_by_plant(
     plant_id: str,
     disease_name: Optional[str] = Query(
@@ -131,7 +132,8 @@ async def get_guides_by_plant(
         cached_guides = await cache_service.get(cache_key)
         if cached_guides:
             logger.info(f"Returning cached guides for plant: {plant_id}")
-            return JSONResponse(content=cached_guides)
+            # Return Pydantic model instance from cached dict
+            return TreatmentGuideListResponse(**cached_guides)
 
         # Cache miss, fetch from database
         logger.info(
@@ -146,22 +148,29 @@ async def get_guides_by_plant(
             offset=offset,
         )
 
-        # Convert Pydantic models to dicts for JSON response
-        response_guides = [guide.model_dump(mode="json") for guide in guides]
+        # Convert Pydantic models to response models
+        response_guides = [
+            TreatmentGuideResponse(**guide.model_dump(mode="json"))
+            for guide in guides
+        ]
 
-        response_data = {
-            "plant_id": plant_id,
-            "disease_filter": disease_name,
-            "total_results": total_count,
-            "limit": limit,
-            "offset": offset,
-            "guides": response_guides,
-        }
+        # Create response model instance
+        response = TreatmentGuideListResponse(
+            plant_id=plant_id,
+            disease_filter=disease_name,
+            total_results=total_count,
+            limit=limit,
+            offset=offset,
+            guides=response_guides,
+        )
 
-        # Cache the response for 24 hours
-        await cache_service.set(cache_key, response_data, ttl_seconds=86400)
+        # Cache the response dict for 24 hours
+        await cache_service.set(
+            cache_key, response.model_dump(mode="json"), ttl_seconds=86400
+        )
 
-        return JSONResponse(content=response_data)
+        # Return Pydantic model instance (FastAPI handles serialization)
+        return response
 
     except HTTPException:
         raise

@@ -203,7 +203,7 @@ class TreatmentGuideResponse(BaseModel):
                         "image_url": "https://placehold.co/600x400",
                         "materials": ["sarung tangan"],
                         "is_critical": True,
-                "estimated_time": "5 menit",
+                        "estimated_time": "5 menit",
                     }
                 ],
                 "materials": ["sarung tangan", "fungisida"],
@@ -211,5 +211,42 @@ class TreatmentGuideResponse(BaseModel):
                 "estimated_duration_text": "2-3 minggu",
                 "created_at": "2025-12-05T10:00:00Z",
                 "updated_at": "2025-12-05T10:00:00Z",
+            }
+        }
+
+
+class TreatmentGuideListResponse(BaseModel):
+    """API response model for paginated list of treatment guides."""
+
+    plant_id: str = Field(..., description="Plant identifier")
+    disease_filter: Optional[str] = Field(None, description="Disease name filter applied")
+    total_results: int = Field(..., ge=0, description="Total number of guides matching the query")
+    limit: int = Field(..., ge=1, le=100, description="Maximum results per page")
+    offset: int = Field(..., ge=0, description="Number of results skipped")
+    guides: List[TreatmentGuideResponse] = Field(..., description="List of treatment guides")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "plant_id": "general",
+                "disease_filter": None,
+                "total_results": 4,
+                "limit": 10,
+                "offset": 0,
+                "guides": [
+                    {
+                        "id": "550e8400-e29b-41d4-a716-446655440000",
+                        "plant_id": "general",
+                        "disease_name": "Leaf Spot",
+                        "severity": "medium",
+                        "guide_type": "disease_treatment",
+                        "steps": [],
+                        "materials": ["fungisida"],
+                        "estimated_duration_minutes": 20160,
+                        "estimated_duration_text": "2-3 minggu",
+                        "created_at": "2025-12-05T10:00:00Z",
+                        "updated_at": "2025-12-05T10:00:00Z",
+                    }
+                ],
             }
         }
