@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../models/identify_result.dart';
 import '../../models/plant_collection.dart';
 import '../../providers/collection_provider.dart';
-import '../../screens/identify_result_screen.dart';
+import '../../providers/sync_provider.dart';
+import '../../screens/collection_detail_screen.dart';
 import '../../theme/colors.dart';
 
 class CollectionTab extends ConsumerStatefulWidget {
@@ -20,6 +20,7 @@ class CollectionTab extends ConsumerStatefulWidget {
 class _CollectionTabState extends ConsumerState<CollectionTab> {
   String _selectedFilter = 'all';
   final TextEditingController _searchController = TextEditingController();
+  bool _isSyncing = false;
 
   @override
   void initState() {
@@ -36,10 +37,45 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
     super.dispose();
   }
 
+  Future<void> _handleSync() async {
+    if (_isSyncing) return;
+
+    setState(() => _isSyncing = true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await ref.read(syncProvider.notifier).syncCollections();
+      
+      // Refresh collections after sync
+      await ref.read(collectionProvider.notifier).loadCollections();
+      
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('✅ Koleksi berhasil disinkronisasi'),
+          backgroundColor: AppColors.primary,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ Gagal sinkronisasi: $e'),
+          backgroundColor: AppColors.danger,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final collectionsAsync = ref.watch(collectionProvider);
+    final syncStatusAsync = ref.watch(syncStatusProvider(null));
 
     return Scaffold(
       body: SafeArea(
@@ -51,13 +87,96 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title
-                  Text(
-                    'Koleksi Tanaman',
-                    style: textTheme.titleMedium?.copyWith(
-                      color: AppColors.textPrimary,
-                      fontSize: 16,
-                    ),
+                  // Title Row with Sync Button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Koleksi Tanaman',
+                        style: textTheme.titleMedium?.copyWith(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                        ),
+                      ),
+                      syncStatusAsync.when(
+                        data: (status) {
+                          final unsynced = status['unsynced'] as int;
+                          final syncAvailable = status['sync_available'] as bool;
+                          
+                          if (!syncAvailable) {
+                            return const SizedBox.shrink();
+                          }
+                          
+                          return Row(
+                            children: [
+                              if (unsynced > 0)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.warning,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '$unsynced',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              IconButton(
+                                icon: _isSyncing
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            AppColors.primary,
+                                          ),
+                                        ),
+                                      )
+                                    : Icon(
+                                        unsynced > 0
+                                            ? Icons.sync_problem
+                                            : Icons.sync,
+                                        color: unsynced > 0
+                                            ? AppColors.warning
+                                            : AppColors.primary,
+                                      ),
+                                onPressed: _handleSync,
+                                tooltip: 'Sinkronisasi koleksi',
+                              ),
+                            ],
+                          );
+                        },
+                        loading: () => const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        error: (_, __) => IconButton(
+                          icon: const Icon(Icons.sync_disabled),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Sinkronisasi tidak tersedia'),
+                              ),
+                            );
+                          },
+                          tooltip: 'Sinkronisasi tidak tersedia',
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 24),
 
@@ -169,17 +288,18 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
                   }
 
                   // Filter collections based on selected filter
-                  final filteredCollections = _filterCollections(collections);
+                  final filteredCollections =
+                      _filterCollections(collections);
 
                   return GridView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          childAspectRatio: 157.5 / 254.4,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
+                      crossAxisCount: 2,
+                      childAspectRatio: 157.5 / 254.4,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
                     itemCount: filteredCollections.length,
                     itemBuilder: (context, index) {
                       final collection = filteredCollections[index];
@@ -259,7 +379,6 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
   Future<void> _handleDelete(PlantCollection collection) async {
     // Capture ScaffoldMessenger before any async operations
     final messenger = ScaffoldMessenger.of(context);
-
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -287,7 +406,6 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
         await ref
             .read(collectionProvider.notifier)
             .deleteCollection(collection.id!);
-
         // Use captured messenger instead of context
         messenger.showSnackBar(
           const SnackBar(
@@ -309,48 +427,18 @@ class _CollectionTabState extends ConsumerState<CollectionTab> {
   }
 
   void _navigateToDetail(PlantCollection collection) {
-    // Capture messenger before any operations that might fail
-    final messenger = ScaffoldMessenger.of(context);
-
-    // Decode identificationData back to IdentifyResult
-    if (collection.identificationData == null) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Data identifikasi tidak tersedia'),
-          duration: Duration(seconds: 2),
+    // Navigate to CollectionDetailScreen instead of IdentifyResultScreen
+    final imageFile = File(collection.imageUrl);
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CollectionDetailScreen(
+          collection: collection,
+          imageFile: imageFile.existsSync() ? imageFile : null,
         ),
-      );
-      return;
-    }
-
-    try {
-      // Use model's helper method for decoding
-      final data = PlantCollection.decodeIdentificationData(
-        collection.identificationData,
-      );
-      if (data == null) {
-        throw Exception('Failed to decode identification data');
-      }
-
-      final result = IdentifyResult.fromJson(data);
-      final imageFile = File(collection.imageUrl);
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              IdentifyResultScreen(result: result, imageFile: imageFile),
-        ),
-      );
-    } catch (e) {
-      // Use captured messenger instead of context
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Error memuat data: $e'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+      ),
+    );
   }
 }
 
@@ -418,7 +506,7 @@ class _CollectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-
+    
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -460,7 +548,6 @@ class _CollectionCard extends StatelessWidget {
                           )
                         : _buildImagePlaceholder(),
                   ),
-
                   // Gradient overlay for better text readability
                   Positioned(
                     bottom: 0,
@@ -480,7 +567,6 @@ class _CollectionCard extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   // Status Badge (top right)
                   Positioned(
                     top: 8,
@@ -524,7 +610,6 @@ class _CollectionCard extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   // Delete Button (top left)
                   Positioned(
                     top: 8,
@@ -551,7 +636,6 @@ class _CollectionCard extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   // Confidence Badge (bottom left)
                   if (collection.confidence != null)
                     Positioned(
@@ -587,10 +671,44 @@ class _CollectionCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  // Sync Badge (bottom right - only if synced is false)
+                  if (collection.synced == false)
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.cloud_off,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              'Belum Sync',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
-
             // Info Section
             Expanded(
               child: Padding(
@@ -612,9 +730,7 @@ class _CollectionCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-
                     const SizedBox(height: 4),
-
                     // Timestamp
                     Row(
                       children: [
@@ -665,7 +781,6 @@ class _CollectionCard extends StatelessWidget {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-
     if (difference.inMinutes < 1) {
       return 'Baru saja';
     } else if (difference.inHours < 1) {
