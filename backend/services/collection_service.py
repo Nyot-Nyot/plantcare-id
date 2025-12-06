@@ -463,8 +463,14 @@ class CollectionService:
 
         Server-wins conflict resolution:
         - If collection with same id exists on server, keep server version
-        - New collections from client are inserted
+        - New collections from client are inserted in a single bulk operation
         - All synced collections marked as is_synced=True
+
+        Uses true bulk operations to avoid N+1 query problem:
+        1. Collects all non-null IDs
+        2. Fetches all existing collections in a single query
+        3. Determines which collections are new
+        4. Creates all new collections in a single bulk insert
 
         Args:
             user_id: UUID of the authenticated user
@@ -478,42 +484,109 @@ class CollectionService:
             CollectionServiceError: If data parsing fails
         """
         self._check_configured()
-        synced_collections: List[PlantCollectionResponse] = []
-        failed_count = 0
 
-        for item in collections:
-            try:
-                # Check if collection already exists on server
-                if item.id:
-                    existing = await self.get_collection_by_id(item.id)
-                    if existing:
-                        # Server wins - use existing server version
-                        synced_collections.append(existing)
-                        continue
+        if not collections:
+            return [], 0
 
-                # Create new collection (upsert)
-                create_data = PlantCollectionCreate(
-                    plant_id=item.plant_id,
-                    common_name=item.common_name,
-                    scientific_name=item.scientific_name,
-                    image_url=item.image_url,
-                    identified_at=item.identified_at,
-                    last_care_date=item.last_care_date,
-                    next_care_date=item.next_care_date,
-                    care_frequency_days=item.care_frequency_days,
-                    health_status=item.health_status,
-                    notes=item.notes,
-                )
+        try:
+            # Step 1: Collect all non-null IDs from incoming collections
+            existing_ids = [str(item.id) for item in collections if item.id]
 
-                created = await self.create_collection(user_id, create_data)
-                synced_collections.append(created)
+            # Step 2: Fetch all existing collections in a single query
+            existing_collections_map = {}
+            if existing_ids:
+                async with httpx.AsyncClient() as client:
+                    # Build filter for multiple IDs: id=in.(uuid1,uuid2,uuid3)
+                    ids_filter = f"in.({','.join(existing_ids)})"
+                    params = {
+                        "id": ids_filter,
+                        "user_id": f"eq.{user_id}",
+                        "select": "*",
+                    }
 
-            except Exception as e:
-                logger.error(f"Failed to sync collection item: {str(e)}")
-                failed_count += 1
-                continue
+                    response = await client.get(
+                        f"{self.base_url}/plant_collections",
+                        headers=self.headers,
+                        params=params,
+                    )
 
-        return synced_collections, failed_count
+                    if response.status_code == 200:
+                        existing_data = response.json()
+                        # Build map for O(1) lookup
+                        for col_data in existing_data:
+                            try:
+                                col = PlantCollectionResponse(**col_data)
+                                existing_collections_map[str(col.id)] = col
+                            except ValidationError as e:
+                                logger.warning(f"Failed to parse existing collection: {e}")
+                    elif response.status_code != 404:
+                        logger.error(
+                            f"Error fetching existing collections: {response.status_code} - {response.text}"
+                        )
+
+            # Step 3: Separate existing (server-wins) from new collections
+            synced_collections: List[PlantCollectionResponse] = []
+            new_collections_data = []
+
+            for item in collections:
+                if item.id and str(item.id) in existing_collections_map:
+                    # Server wins - use existing server version
+                    synced_collections.append(existing_collections_map[str(item.id)])
+                else:
+                    # New collection - prepare for bulk insert
+                    new_collections_data.append({
+                        "user_id": str(user_id),
+                        "plant_id": item.plant_id,
+                        "common_name": item.common_name,
+                        "scientific_name": item.scientific_name,
+                        "image_url": item.image_url,
+                        "identified_at": item.identified_at.isoformat() if item.identified_at else None,
+                        "last_care_date": item.last_care_date.isoformat() if item.last_care_date else None,
+                        "next_care_date": item.next_care_date.isoformat() if item.next_care_date else None,
+                        "care_frequency_days": item.care_frequency_days,
+                        "health_status": item.health_status,
+                        "notes": item.notes,
+                    })
+
+            # Step 4: Bulk insert all new collections in a single request
+            failed_count = 0
+            if new_collections_data:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.base_url}/plant_collections",
+                        headers=self.headers,
+                        json=new_collections_data,  # PostgREST supports array of objects
+                    )
+
+                    if response.status_code == 201:
+                        created_data = response.json()
+                        # Parse all created collections
+                        for col_data in created_data:
+                            try:
+                                created = PlantCollectionResponse(**col_data)
+                                synced_collections.append(created)
+                            except ValidationError as e:
+                                logger.error(f"Failed to parse created collection: {e}")
+                                failed_count += 1
+                    else:
+                        logger.error(
+                            f"Bulk insert failed: {response.status_code} - {response.text}"
+                        )
+                        # All new collections failed
+                        failed_count = len(new_collections_data)
+                        raise SupabaseError(
+                            "Database error during bulk collection insert",
+                            status_code=response.status_code,
+                            response_text=response.text,
+                        )
+
+            return synced_collections, failed_count
+
+        except SupabaseError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error syncing collections: {str(e)}")
+            raise CollectionServiceError(f"Failed to sync collections: {str(e)}")
 
     async def get_collections_by_timestamp(
         self, user_id: UUID, since_timestamp: datetime
