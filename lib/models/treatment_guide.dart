@@ -25,7 +25,31 @@ class GuideStep {
   });
 
   /// Create GuideStep from JSON
+  /// Throws [FormatException] if required fields are missing or invalid
   factory GuideStep.fromJson(Map<String, dynamic> json) {
+    // Validate and parse step_number - required field, must be positive integer
+    final stepNumberJson = json['step_number'];
+    if (stepNumberJson == null) {
+      throw FormatException('Missing required field: step_number');
+    }
+    final stepNumber = (stepNumberJson as num?)?.toInt();
+    if (stepNumber == null || stepNumber <= 0) {
+      throw FormatException(
+        'Invalid step_number: $stepNumberJson (must be a positive integer)'
+      );
+    }
+
+    // Validate required string fields
+    final title = json['title']?.toString();
+    if (title == null || title.isEmpty) {
+      throw FormatException('Missing or empty required field: title');
+    }
+
+    final description = json['description']?.toString();
+    if (description == null || description.isEmpty) {
+      throw FormatException('Missing or empty required field: description');
+    }
+
     // Parse materials list, handling both List and single string cases
     List<String> materialsList = [];
     final materialsJson = json['materials'];
@@ -36,9 +60,9 @@ class GuideStep {
     }
 
     return GuideStep(
-      stepNumber: (json['step_number'] as num?)?.toInt() ?? 0,
-      title: json['title']?.toString() ?? '',
-      description: json['description']?.toString() ?? '',
+      stepNumber: stepNumber,
+      title: title,
+      description: description,
       imageUrl: json['image_url']?.toString(),
       materials: materialsList,
       isCritical: json['is_critical'] == true,
@@ -137,18 +161,42 @@ class TreatmentGuide {
   });
 
   /// Create TreatmentGuide from JSON
+  /// Throws [FormatException] if required fields are missing or invalid
   factory TreatmentGuide.fromJson(Map<String, dynamic> json) {
-    // Parse steps list
+    // Validate required string fields
+    final id = json['id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw FormatException('Missing or empty required field: id');
+    }
+
+    final plantId = json['plant_id']?.toString();
+    if (plantId == null || plantId.isEmpty) {
+      throw FormatException('Missing or empty required field: plant_id');
+    }
+
+    final diseaseName = json['disease_name']?.toString();
+    if (diseaseName == null || diseaseName.isEmpty) {
+      throw FormatException('Missing or empty required field: disease_name');
+    }
+
+    // Parse steps list - required, must not be empty
     List<GuideStep> stepsList = [];
     final stepsJson = json['steps'];
     if (stepsJson is List) {
-      stepsList = stepsJson
-          .map(
-            (stepJson) => GuideStep.fromJson(
-              stepJson is Map<String, dynamic> ? stepJson : {},
-            ),
-          )
-          .toList();
+      try {
+        stepsList = stepsJson
+            .map(
+              (stepJson) => GuideStep.fromJson(
+                stepJson is Map<String, dynamic> ? stepJson : {},
+              ),
+            )
+            .toList();
+      } on FormatException catch (e) {
+        throw FormatException('Invalid step data: ${e.message}');
+      }
+    }
+    if (stepsList.isEmpty) {
+      throw FormatException('TreatmentGuide must have at least one step');
     }
 
     // Parse materials list
@@ -178,9 +226,9 @@ class TreatmentGuide {
     }
 
     return TreatmentGuide(
-      id: json['id']?.toString() ?? '',
-      plantId: json['plant_id']?.toString() ?? '',
-      diseaseName: json['disease_name']?.toString() ?? '',
+      id: id,
+      plantId: plantId,
+      diseaseName: diseaseName,
       severity: json['severity']?.toString() ?? 'unknown',
       guideType: json['guide_type']?.toString() ?? 'disease_treatment',
       steps: stepsList,

@@ -24,6 +24,7 @@ class GuideService {
   /// otherwise fetches from API and caches the result.
   ///
   /// Throws [StateError] if ORCHESTRATOR_URL is not configured.
+  /// Throws [FormatException] if API returns invalid data.
   /// Throws [Exception] if API request fails.
   Future<TreatmentGuide?> getGuideById(String id) async {
     if (_baseUrl.trim().isEmpty) {
@@ -45,6 +46,8 @@ class GuideService {
 
       if (response.statusCode == 200) {
         final jsonBody = json.decode(response.body) as Map<String, dynamic>;
+        
+        // This will throw FormatException if data is invalid
         final guide = TreatmentGuide.fromJson(jsonBody);
 
         // Cache the result
@@ -58,6 +61,8 @@ class GuideService {
           'Failed to fetch guide: ${response.statusCode} - ${response.body}',
         );
       }
+    } on FormatException catch (e) {
+      throw FormatException('Invalid guide data from API: ${e.message}');
     } catch (e) {
       if (e is TimeoutException) {
         throw Exception('Request timeout while fetching guide');
@@ -75,6 +80,7 @@ class GuideService {
   /// [offset] - Number of results to skip for pagination (default: 0)
   ///
   /// Throws [StateError] if ORCHESTRATOR_URL is not configured.
+  /// Throws [FormatException] if API returns invalid data.
   /// Throws [Exception] if API request fails.
   Future<List<TreatmentGuide>> getGuidesByPlantId(
     String plantId, {
@@ -141,6 +147,8 @@ class GuideService {
           'Failed to fetch guides: ${response.statusCode} - ${response.body}',
         );
       }
+    } on FormatException catch (e) {
+      throw FormatException('Invalid guide data from API: ${e.message}');
     } catch (e) {
       if (e is TimeoutException) {
         throw Exception('Request timeout while fetching guides');
