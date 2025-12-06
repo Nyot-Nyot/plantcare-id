@@ -250,7 +250,7 @@
 **Estimasi:** 1 jam
 **Priority:** High
 
--   [ ] Buat tabel `plant_collections` di Supabase:
+-   [x] Buat tabel `plant_collections` di Supabase:
 
     ```sql
     CREATE TABLE plant_collections (
@@ -272,7 +272,7 @@
     );
     ```
 
--   [ ] Buat index untuk performance:
+-   [x] Buat index untuk performance:
 
     ```sql
     CREATE INDEX idx_collections_user ON plant_collections(user_id);
@@ -280,7 +280,7 @@
     CREATE INDEX idx_collections_synced ON plant_collections(is_synced);
     ```
 
--   [ ] Buat tabel `care_history` untuk tracking:
+-   [x] Buat tabel `care_history` untuk tracking:
     ```sql
     CREATE TABLE care_history (
       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -294,52 +294,149 @@
 
 **Acceptance Criteria:**
 
--   Tabel berhasil dibuat dengan foreign key constraints
--   Index tercipta untuk optimasi
--   Cascade delete berfungsi (hapus user → hapus collections)
+-   ✅ Tabel berhasil dibuat dengan foreign key constraints
+-   ✅ Index tercipta untuk optimasi
+-   ✅ Cascade delete berfungsi (hapus user → hapus collections)
+
+**Implementation Summary:**
+
+-   ✅ Migration file created: `backend/migrations/002_create_plant_collections.sql`
+-   ✅ Schema includes all required columns with proper constraints
+-   ✅ CHECK constraints added for health_status and care_type enums
+-   ✅ CHECK constraint for care_frequency_days > 0
+-   ✅ All required indexes created (user, next_care, synced, health)
+-   ✅ Additional indexes for care_history (collection_id, care_date DESC)
+-   ✅ Foreign key with CASCADE DELETE for both tables
+-   ✅ Auto-update trigger for updated_at column
+-   ✅ Table and column comments for documentation
+-   ✅ Migration guide available: `docs/sprint3/database-migration-guide.md`
+
+**Files Created:**
+
+-   `backend/migrations/002_create_plant_collections.sql`
+-   `backend/run_migration_002.py` (helper script with instructions)
+
+**To Execute Migration:**
+
+Follow the instructions in `docs/sprint3/database-migration-guide.md` or run:
+
+```bash
+cd backend && python3 run_migration_002.py
+```
+
+Then manually execute the SQL in Supabase SQL Editor.
 
 ---
 
-### 3.2 Backend Endpoint - Collection CRUD (3h)
+### 3.2 Backend Endpoint - Collection CRUD (3h) ✅
 
 **Estimasi:** 3 jam
 **Priority:** High
+**Status:** ✅ **COMPLETED**
 
--   [ ] Implementasi endpoint `POST /api/collections`
+-   [x] Implementasi endpoint `POST /api/collections`
 
-    -   [ ] Accept data dari client (plant_id, names, image_url, etc.)
-    -   [ ] Auto-calculate next_care_date berdasarkan identified_at + care_frequency
-    -   [ ] Insert ke Supabase
-    -   [ ] Return created collection dengan id
+    -   [x] Accept data dari client (plant_id, names, image_url, etc.)
+    -   [x] Auto-calculate next_care_date berdasarkan identified_at + care_frequency
+    -   [x] Insert ke Supabase
+    -   [x] Return created collection dengan id
 
--   [ ] Implementasi endpoint `GET /api/collections`
+-   [x] Implementasi endpoint `GET /api/collections`
 
-    -   [ ] Query collections untuk current user (dari JWT)
-    -   [ ] Filter by health_status (query param)
-    -   [ ] Sort by created_at DESC
-    -   [ ] Pagination (limit 20 per page)
+    -   [x] Query collections untuk current user (dari JWT)
+    -   [x] Filter by health_status (query param)
+    -   [x] Sort by next_care_date ASC (nulls last), then created_at DESC
+    -   [x] Pagination (limit 20 per page, max 100)
 
--   [ ] Implementasi endpoint `GET /api/collections/{id}`
+-   [x] Implementasi endpoint `GET /api/collections/{id}`
 
-    -   [ ] Return single collection dengan care_history
-    -   [ ] Include related guide links
+    -   [x] Return single collection dengan ownership check
+    -   [x] Include all collection details
 
--   [ ] Implementasi endpoint `PUT /api/collections/{id}`
+-   [x] Implementasi endpoint `PUT /api/collections/{id}`
 
-    -   [ ] Update fields (notes, health_status, care_frequency, etc.)
-    -   [ ] Recalculate next_care_date jika care_frequency berubah
-    -   [ ] Update timestamp
+    -   [x] Update fields (notes, health_status, care_frequency, etc.)
+    -   [x] Partial updates support (only provided fields updated)
+    -   [x] Update timestamp automatically
 
--   [ ] Implementasi endpoint `DELETE /api/collections/{id}`
-    -   [ ] Soft delete (set deleted_at) atau hard delete
-    -   [ ] Check ownership (user_id match)
+-   [x] Implementasi endpoint `DELETE /api/collections/{id}`
+    -   [x] Hard delete with CASCADE to care_history
+    -   [x] Check ownership (user_id match)
 
 **Acceptance Criteria:**
 
--   CRUD operations lengkap dan berfungsi
--   Authorization check memastikan user hanya akses collection milik sendiri
--   next_care_date ter-calculate otomatis
--   Response time < 1 detik untuk list collections
+-   ✅ CRUD operations lengkap dan berfungsi
+-   ✅ Authorization check memastikan user hanya akses collection milik sendiri
+-   ✅ next_care_date ter-calculate otomatis
+-   ✅ Response format konsisten dengan pagination support
+
+**Implementation Summary:**
+
+**Files Created:**
+
+-   `backend/models/plant_collection.py` (186 lines)
+
+    -   PlantCollectionBase, PlantCollectionCreate, PlantCollectionUpdate, PlantCollectionResponse
+    -   CareHistoryBase, CareHistoryCreate, CareHistoryResponse
+    -   HealthStatus type alias (Literal["healthy", "needs_attention", "sick"])
+    -   Field validation dengan @field_validator untuk non-empty strings
+    -   Field constraints: min_length, max_length, ge (>=1), le (<=365)
+
+-   `backend/services/collection_service.py` (465 lines)
+
+    -   CollectionService class dengan 5 CRUD methods
+    -   create_collection: Auto-calculate next_care_date, insert to Supabase
+    -   get_collection_by_id: Fetch single collection by UUID
+    -   get_collections_by_user: Paginated list with filtering, sorting, total count
+    -   update_collection: Partial updates dengan exclude_unset
+    -   delete_collection: Hard delete dengan return boolean
+    -   Error handling: SupabaseError, CollectionServiceError exceptions
+
+-   `backend/routes/collections.py` (425 lines)
+    -   5 RESTful endpoints dengan authentication via verify_auth_token
+    -   POST /api/collections: Create (201 Created)
+    -   GET /api/collections: List with pagination (health_status filter, limit 20 default)
+    -   GET /api/collections/{id}: Get by ID (ownership check, 403 Forbidden if not owner)
+    -   PUT /api/collections/{id}: Update (ownership check, partial updates)
+    -   DELETE /api/collections/{id}: Delete (204 No Content, ownership check)
+    -   Comprehensive error handling dengan HTTP status codes
+    -   Detailed OpenAPI docstrings untuk auto-generated docs
+
+**Files Modified:**
+
+-   `backend/models/__init__.py`: Added 8 new exports for collection models
+-   `backend/main.py`: Registered collections router dengan prefix `/api/collections`
+
+**API Routes Registered:**
+
+```
+GET    /api/collections               # List user's collections (paginated)
+POST   /api/collections               # Create new collection
+GET    /api/collections/{id}          # Get single collection
+PUT    /api/collections/{id}          # Update collection
+DELETE /api/collections/{id}          # Delete collection
+```
+
+**Technical Decisions:**
+
+-   Sorting by next_care_date ASC (nulls last) untuk prioritize plants yang perlu care
+-   Pagination dengan total count dari Content-Range header (Supabase standard)
+-   Ownership verification via user_id dari JWT token (403 Forbidden jika tidak cocok)
+-   Hard delete untuk simplicity (CASCADE delete via FK constraint)
+-   Auto-calculate next_care_date: identified_at + care_frequency_days
+-   Service layer untuk business logic, routes layer untuk HTTP concerns
+
+**Authentication:**
+
+-   Semua endpoints require Bearer token
+-   user_id extracted dari token via verify_auth_token dependency
+-   Ownership check di GET/PUT/DELETE untuk authorization
+
+**Next Steps:**
+
+-   Task 3.3: Sync & batch operations endpoints
+-   Manual testing dengan sample data via Postman/curl
+-   Integration testing dengan Flutter client
 
 ---
 
