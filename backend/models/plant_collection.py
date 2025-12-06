@@ -11,6 +11,25 @@ from pydantic import BaseModel, Field, field_validator
 HealthStatus = Literal["healthy", "needs_attention", "sick"]
 
 
+# Reusable validator function for optional string fields
+def validate_not_empty_if_provided(v: Optional[str]) -> Optional[str]:
+    """
+    Ensure optional string fields are not just whitespace if provided.
+
+    Args:
+        v: The string value to validate
+
+    Returns:
+        The stripped string if not empty, None if input was None
+
+    Raises:
+        ValueError: If the string is empty or only whitespace
+    """
+    if v is not None and (not v or not v.strip()):
+        raise ValueError("Field cannot be empty or whitespace")
+    return v.strip() if v else None
+
+
 class PlantCollectionBase(BaseModel):
     """Base model for plant collection with common fields."""
 
@@ -78,11 +97,9 @@ class PlantCollectionCreate(PlantCollectionBase):
 
     @field_validator("scientific_name", "image_url", "notes")
     @classmethod
-    def validate_not_empty_if_provided(cls, v: Optional[str]) -> Optional[str]:
+    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         """Ensure optional string fields are not just whitespace if provided."""
-        if v is not None and (not v or not v.strip()):
-            raise ValueError("Field cannot be empty or whitespace")
-        return v.strip() if v else None
+        return validate_not_empty_if_provided(v)
 
 
 class PlantCollectionUpdate(BaseModel):
@@ -116,11 +133,9 @@ class PlantCollectionUpdate(BaseModel):
 
     @field_validator("common_name", "scientific_name", "image_url", "notes")
     @classmethod
-    def validate_not_empty_if_provided(cls, v: Optional[str]) -> Optional[str]:
+    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         """Ensure string fields are not just whitespace if provided."""
-        if v is not None and (not v or not v.strip()):
-            raise ValueError("Field cannot be empty or whitespace")
-        return v.strip() if v else None
+        return validate_not_empty_if_provided(v)
 
 
 class PlantCollectionResponse(PlantCollectionBase):
@@ -244,11 +259,9 @@ class CollectionSyncItem(PlantCollectionBase):
 
     @field_validator("common_name", "scientific_name", "image_url", "notes")
     @classmethod
-    def validate_not_empty_if_provided(cls, v: Optional[str]) -> Optional[str]:
+    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         """Ensure string fields are not just whitespace if provided."""
-        if v is not None and (not v or not v.strip()):
-            raise ValueError("Field cannot be empty or whitespace")
-        return v.strip() if v else None
+        return validate_not_empty_if_provided(v)
 
 
 class CollectionSyncRequest(BaseModel):
