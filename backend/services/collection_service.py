@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from backend.models.plant_collection import (
+    CareHistoryCreate,
+    CareHistoryResponse,
+    CollectionSyncItem,
     PlantCollectionCreate,
     PlantCollectionResponse,
     PlantCollectionUpdate,
@@ -441,3 +444,245 @@ class CollectionService:
                 f"Unexpected error deleting collection {collection_id}: {str(e)}"
             )
             raise CollectionServiceError(f"Failed to delete collection: {str(e)}")
+
+    async def sync_collections(
+        self, user_id: UUID, collections: List[CollectionSyncItem]
+    ) -> tuple[List[PlantCollectionResponse], int]:
+        """
+        Bulk upsert collections from client for sync.
+
+        Server-wins conflict resolution:
+        - If collection with same id exists on server, keep server version
+        - New collections from client are inserted
+        - All synced collections marked as is_synced=True
+
+        Args:
+            user_id: UUID of the authenticated user
+            collections: List of CollectionSyncItem from client
+
+        Returns:
+            Tuple of (synced_collections_list, failed_count)
+
+        Raises:
+            SupabaseError: If database error occurs
+            CollectionServiceError: If data parsing fails
+        """
+        self._check_configured()
+        synced_collections: List[PlantCollectionResponse] = []
+        failed_count = 0
+
+        for item in collections:
+            try:
+                # Check if collection already exists on server
+                if item.id:
+                    existing = await self.get_collection_by_id(item.id)
+                    if existing:
+                        # Server wins - use existing server version
+                        synced_collections.append(existing)
+                        continue
+
+                # Create new collection (upsert)
+                create_data = PlantCollectionCreate(
+                    plant_id=item.plant_id,
+                    common_name=item.common_name,
+                    scientific_name=item.scientific_name,
+                    image_url=item.image_url,
+                    identified_at=item.identified_at,
+                    last_care_date=item.last_care_date,
+                    next_care_date=item.next_care_date,
+                    care_frequency_days=item.care_frequency_days,
+                    health_status=item.health_status,
+                    notes=item.notes,
+                )
+
+                created = await self.create_collection(user_id, create_data)
+                synced_collections.append(created)
+
+            except Exception as e:
+                logger.error(f"Failed to sync collection item: {str(e)}")
+                failed_count += 1
+                continue
+
+        return synced_collections, failed_count
+
+    async def get_collections_by_timestamp(
+        self, user_id: UUID, since_timestamp: datetime
+    ) -> List[PlantCollectionResponse]:
+        """
+        Get collections that have been updated since a specific timestamp.
+
+        Used for incremental sync to reduce bandwidth usage.
+
+        Args:
+            user_id: UUID of the authenticated user
+            since_timestamp: Only return collections with updated_at > this timestamp
+
+        Returns:
+            List of PlantCollectionResponse objects
+
+        Raises:
+            SupabaseError: If database error occurs
+            CollectionServiceError: If data parsing fails
+        """
+        self._check_configured()
+        try:
+            # Query collections with updated_at > since_timestamp
+            params = {
+                "user_id": f"eq.{user_id}",
+                "updated_at": f"gt.{since_timestamp.isoformat()}",
+                "order": "updated_at.asc",
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/plant_collections",
+                    headers=self.headers,
+                    params=params,
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    try:
+                        return [PlantCollectionResponse(**item) for item in data]
+                    except ValidationError as e:
+                        logger.error(f"Failed to parse collections: {e}")
+                        raise CollectionServiceError(
+                            f"Invalid collection data from database: {e}"
+                        )
+                else:
+                    logger.error(
+                        f"Supabase error fetching collections by timestamp: "
+                        f"{response.status_code} - {response.text}"
+                    )
+                    raise SupabaseError(
+                        f"Database error while fetching collections",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
+
+        except (SupabaseError, CollectionServiceError):
+            raise
+        except Exception as e:
+            logger.error(
+                f"Unexpected error fetching collections by timestamp: {str(e)}"
+            )
+            raise CollectionServiceError(
+                f"Failed to fetch collections by timestamp: {str(e)}"
+            )
+
+    async def record_care_action(
+        self, collection_id: UUID, user_id: UUID, care_data: CareHistoryCreate
+    ) -> tuple[CareHistoryResponse, PlantCollectionResponse]:
+        """
+        Record a care action for a collection.
+
+        This method:
+        1. Creates a new care_history record
+        2. Updates the collection's last_care_date to current time
+        3. Recalculates next_care_date based on care_frequency_days
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: UUID of the authenticated user (for ownership check)
+            care_data: CareHistoryCreate model with care action details
+
+        Returns:
+            Tuple of (CareHistoryResponse, updated PlantCollectionResponse)
+
+        Raises:
+            SupabaseError: If database error occurs
+            CollectionServiceError: If collection not found or ownership mismatch
+        """
+        self._check_configured()
+
+        try:
+            # Verify collection exists and user owns it
+            collection = await self.get_collection_by_id(collection_id)
+            if not collection:
+                raise CollectionServiceError(
+                    f"Collection {collection_id} not found or access denied"
+                )
+
+            # Verify ownership
+            if collection.user_id != user_id:
+                raise CollectionServiceError(
+                    f"Collection {collection_id} not found or access denied"
+                )
+
+            # Create care history record
+            care_payload = care_data.model_dump(exclude_unset=True)
+            care_payload["collection_id"] = str(collection_id)
+            if care_payload.get("care_date"):
+                care_payload["care_date"] = care_payload["care_date"].isoformat()
+
+            async with httpx.AsyncClient() as client:
+                # Insert care history
+                care_response = await client.post(
+                    f"{self.base_url}/care_history",
+                    headers=self.headers,
+                    json=care_payload,
+                )
+
+                if care_response.status_code != 201:
+                    logger.error(
+                        f"Supabase error creating care history: "
+                        f"{care_response.status_code} - {care_response.text}"
+                    )
+                    raise SupabaseError(
+                        "Database error while creating care history",
+                        status_code=care_response.status_code,
+                        response_text=care_response.text,
+                    )
+
+                care_result = care_response.json()
+                if isinstance(care_result, list) and len(care_result) > 0:
+                    care_result = care_result[0]
+
+                # Update collection: last_care_date and next_care_date
+                now = datetime.utcnow()
+                update_payload = {
+                    "last_care_date": now.isoformat(),
+                }
+
+                # Recalculate next_care_date if care_frequency_days is set
+                if collection.care_frequency_days:
+                    next_care = now + timedelta(days=collection.care_frequency_days)
+                    update_payload["next_care_date"] = next_care.isoformat()
+
+                collection_response = await client.patch(
+                    f"{self.base_url}/plant_collections",
+                    headers=self.headers,
+                    params={"id": f"eq.{collection_id}"},
+                    json=update_payload,
+                )
+
+                if collection_response.status_code != 200:
+                    logger.error(
+                        f"Supabase error updating collection after care: "
+                        f"{collection_response.status_code} - {collection_response.text}"
+                    )
+                    raise SupabaseError(
+                        "Database error while updating collection",
+                        status_code=collection_response.status_code,
+                        response_text=collection_response.text,
+                    )
+
+                collection_result = collection_response.json()
+                if isinstance(collection_result, list) and len(collection_result) > 0:
+                    collection_result = collection_result[0]
+
+                try:
+                    care_history = CareHistoryResponse(**care_result)
+                    updated_collection = PlantCollectionResponse(**collection_result)
+                    return care_history, updated_collection
+                except ValidationError as e:
+                    logger.error(f"Failed to parse care/collection response: {e}")
+                    raise CollectionServiceError(
+                        f"Invalid data from database: {e}"
+                    )
+
+        except (SupabaseError, CollectionServiceError):
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error recording care action: {str(e)}")
+            raise CollectionServiceError(f"Failed to record care action: {str(e)}")

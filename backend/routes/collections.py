@@ -1,13 +1,19 @@
 """Plant collection API routes."""
 
 import logging
-from typing import Optional
+from datetime import datetime
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.auth import verify_auth_token
 from backend.models.plant_collection import (
+    CareActionRequest,
+    CareActionResponse,
+    CareHistoryCreate,
+    CollectionSyncRequest,
+    CollectionSyncResponse,
     HealthStatus,
     PlantCollectionCreate,
     PlantCollectionResponse,
@@ -370,6 +376,217 @@ async def delete_collection(
         )
     except Exception as e:
         logger.error(f"Unexpected error deleting collection {collection.id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+@router.post(
+    "/sync",
+    response_model=CollectionSyncResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Sync collections from client",
+    description="""
+    Bulk upsert collections from client for synchronization.
+
+    **Conflict Resolution (Server Wins):**
+    - If a collection with the same ID already exists on server, the server version is kept
+    - New collections from client are inserted
+    - All synced collections are marked as is_synced=True
+
+    **Request Body:**
+    - collections: Array of collection items from client (with optional IDs)
+
+    **Response:**
+    - synced_count: Number of collections successfully synced
+    - failed_count: Number of collections that failed to sync
+    - collections: Server versions of all synced collections
+
+    **Authentication:**
+    - Requires valid Bearer token
+    - Only syncs collections for the authenticated user
+    """,
+)
+async def sync_collections(
+    request: CollectionSyncRequest,
+    user_id: str = Depends(verify_auth_token),
+    service: CollectionService = Depends(get_collection_service),
+) -> CollectionSyncResponse:
+    """Sync collections from client to server with conflict resolution."""
+    try:
+        synced_collections, failed_count = await service.sync_collections(
+            user_id=UUID(user_id),
+            collections=request.collections,
+        )
+
+        return CollectionSyncResponse(
+            synced_count=len(synced_collections),
+            failed_count=failed_count,
+            collections=synced_collections,
+        )
+
+    except SupabaseError as e:
+        logger.error(f"Database error syncing collections: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service temporarily unavailable",
+        )
+    except CollectionServiceError as e:
+        logger.error(f"Service error syncing collections: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while syncing collections",
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error syncing collections: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+@router.get(
+    "/changes",
+    response_model=List[PlantCollectionResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get collections changed since timestamp",
+    description="""
+    Get collections that have been updated since a specific timestamp.
+
+    **Use Case:**
+    - Incremental sync to reduce bandwidth usage
+    - Only fetch collections that changed since last sync
+
+    **Query Parameters:**
+    - since: ISO 8601 timestamp (e.g., "2024-01-01T00:00:00Z")
+    - Returns collections with updated_at > since timestamp
+
+    **Response:**
+    - Array of collections sorted by updated_at (ascending)
+    - Empty array if no changes since timestamp
+
+    **Authentication:**
+    - Requires valid Bearer token
+    - Only returns collections for the authenticated user
+    """,
+)
+async def get_collections_changes(
+    since: datetime = Query(
+        ...,
+        description="ISO 8601 timestamp - only return collections updated after this time",
+        example="2024-01-01T00:00:00Z",
+    ),
+    user_id: str = Depends(verify_auth_token),
+    service: CollectionService = Depends(get_collection_service),
+) -> List[PlantCollectionResponse]:
+    """Get collections that have been updated since a specific timestamp."""
+    try:
+        collections = await service.get_collections_by_timestamp(
+            user_id=UUID(user_id),
+            since_timestamp=since,
+        )
+
+        return collections
+
+    except SupabaseError as e:
+        logger.error(f"Database error fetching collection changes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service temporarily unavailable",
+        )
+    except CollectionServiceError as e:
+        logger.error(f"Service error fetching collection changes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching collection changes",
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error fetching collection changes: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+@router.post(
+    "/{collection_id}/care",
+    response_model=CareActionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Record care action for a collection",
+    description="""
+    Record a care action (watering, fertilizing, etc.) for a plant collection.
+
+    **What happens:**
+    1. Creates a new care_history record
+    2. Updates collection's last_care_date to current time (or provided care_date)
+    3. Recalculates next_care_date based on care_frequency_days
+
+    **Request Body:**
+    - care_type: Type of care (watering, fertilizing, pruning, repotting, pest_control, other)
+    - notes: Optional notes about the care action
+    - care_date: Optional timestamp (defaults to now if not provided)
+
+    **Response:**
+    - care_history: The created care history record
+    - collection: The updated collection with new dates
+
+    **Authentication:**
+    - Requires valid Bearer token
+    - Only collection owner can record care actions
+    """,
+)
+async def record_care_action(
+    collection_id: UUID,
+    care_request: CareActionRequest,
+    user_id: str = Depends(verify_auth_token),
+    service: CollectionService = Depends(get_collection_service),
+) -> CareActionResponse:
+    """Record a care action for a plant collection."""
+    try:
+        # Default care_date to now if not provided
+        care_date = care_request.care_date or datetime.utcnow()
+
+        # Create CareHistoryCreate object
+        care_data = CareHistoryCreate(
+            collection_id=collection_id,
+            care_type=care_request.care_type,
+            care_date=care_date,
+            notes=care_request.notes,
+        )
+
+        # Record care action
+        care_history, updated_collection = await service.record_care_action(
+            collection_id=collection_id,
+            user_id=UUID(user_id),
+            care_data=care_data,
+        )
+
+        return CareActionResponse(
+            care_history=care_history,
+            collection=updated_collection,
+        )
+
+    except CollectionServiceError as e:
+        # Handle not found or access denied
+        if "not found" in str(e).lower() or "access denied" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Collection with ID '{collection_id}' not found",
+            )
+        logger.error(f"Service error recording care action: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while recording care action",
+        )
+    except SupabaseError as e:
+        logger.error(f"Database error recording care action: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service temporarily unavailable",
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error recording care action: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",

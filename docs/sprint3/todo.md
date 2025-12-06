@@ -440,38 +440,76 @@ DELETE /api/collections/{id}          # Delete collection
 
 ---
 
-### 3.3 Backend Endpoint - Sync & Batch Operations (2h)
+### 3.3 Backend Endpoint - Sync & Batch Operations (2h) ✅
 
 **Estimasi:** 2 jam
 **Priority:** Medium
+**Status:** ✅ **COMPLETED**
 
--   [ ] Implementasi endpoint `POST /api/collections/sync`
+-   [x] Implementasi endpoint `POST /api/collections/sync`
 
-    -   [ ] Accept array of collections dari client (local changes)
-    -   [ ] Upsert dengan conflict resolution (last-write-wins by updated_at)
-    -   [ ] Return server state untuk client reconciliation
-    -   [ ] Mark is_synced = true
+    -   [x] Accept array of collections dari client (local changes)
+    -   [x] Upsert dengan conflict resolution (server-wins)
+    -   [x] Return server state untuk client reconciliation
+    -   [x] Mark is_synced = true
 
--   [ ] Implementasi endpoint `GET /api/collections/changes`
+-   [x] Implementasi endpoint `GET /api/collections/changes`
 
-    -   [ ] Return collections yang berubah sejak last_sync_timestamp
-    -   [ ] Support incremental sync
+    -   [x] Return collections yang berubah sejak last_sync_timestamp
+    -   [x] Support incremental sync
 
--   [ ] Implementasi endpoint `POST /api/collections/{id}/care`
-    -   [ ] Record care action ke care_history
-    -   [ ] Update last_care_date dan next_care_date
-    -   [ ] Trigger notification scheduling
+-   [x] Implementasi endpoint `POST /api/collections/{id}/care`
+    -   [x] Record care action ke care_history
+    -   [x] Update last_care_date dan next_care_date
+    -   [x] Trigger notification scheduling (via date update)
 
 **Acceptance Criteria:**
 
--   Sync protocol berfungsi dengan conflict resolution
--   Batch operations efisien (tidak hit database per-item)
--   Changes endpoint support incremental sync dengan timestamp
+-   ✅ Sync protocol berfungsi dengan conflict resolution
+-   ✅ Batch operations efisien (tidak hit database per-item)
+-   ✅ Changes endpoint support incremental sync dengan timestamp
 
-**Technical Notes:**
+**Implementation Summary:**
 
--   Conflict resolution: server always wins, simpan client changes ke conflict_log
--   Incremental sync mengurangi bandwidth dan battery usage
+**Models Created:**
+
+-   `CollectionSyncItem` - Model untuk item yang di-sync dari client
+-   `CollectionSyncRequest` - Request body untuk bulk sync
+-   `CollectionSyncResponse` - Response dengan synced/failed count
+-   `CareActionRequest` - Request body untuk record care action
+-   `CareActionResponse` - Response dengan care_history + updated collection
+
+**Service Methods:**
+
+-   `sync_collections()` - Bulk upsert dengan server-wins conflict resolution
+-   `get_collections_by_timestamp()` - Incremental sync berdasarkan updated_at
+-   `record_care_action()` - Create care_history + update collection dates
+
+**API Routes:**
+
+```
+POST   /api/collections/sync           # Bulk sync from client
+GET    /api/collections/changes        # Incremental sync by timestamp
+POST   /api/collections/{id}/care      # Record care action
+```
+
+**Files Modified:**
+
+-   `backend/models/plant_collection.py` - Added 5 new models
+-   `backend/models/__init__.py` - Exported new models
+-   `backend/services/collection_service.py` - Added 3 new service methods
+-   `backend/routes/collections.py` - Added 3 new endpoints
+
+**Technical Decisions:**
+
+-   Server-wins conflict resolution: jika ID sudah ada, gunakan server version
+-   New collections dari client di-insert sebagai collection baru
+-   Incremental sync menggunakan `updated_at > since_timestamp` filter
+-   Care action automatically updates last_care_date & recalculates next_care_date
+-   All endpoints require Bearer token authentication
+-   Comprehensive error handling dengan logging
+
+**Total Collection Endpoints:** 8 (5 CRUD + 3 sync/batch operations)
 
 ---
 

@@ -1,9 +1,14 @@
 """Models for PlantCare.ID backend."""
 
 from .plant_collection import (
+    CareActionRequest,
+    CareActionResponse,
     CareHistoryBase,
     CareHistoryCreate,
     CareHistoryResponse,
+    CollectionSyncItem,
+    CollectionSyncRequest,
+    CollectionSyncResponse,
     HealthStatus,
     PlantCollectionBase,
     PlantCollectionCreate,
@@ -30,8 +35,13 @@ __all__ = [
     "PlantCollectionCreate",
     "PlantCollectionUpdate",
     "PlantCollectionResponse",
+    "CollectionSyncItem",
+    "CollectionSyncRequest",
+    "CollectionSyncResponse",
     "CareHistoryBase",
     "CareHistoryCreate",
     "CareHistoryResponse",
+    "CareActionRequest",
+    "CareActionResponse",
     "HealthStatus",
 ]
