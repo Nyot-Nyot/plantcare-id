@@ -65,6 +65,13 @@ try:
 except ImportError as e:
     logger.warning(f"Could not import guides routes: {e}")
 
+try:
+    from backend.routes.collections import router as collections_router
+    app.include_router(collections_router, prefix="/api/collections", tags=["collections"])
+    logger.info("Plant collections routes registered")
+except ImportError as e:
+    logger.warning(f"Could not import collections routes: {e}")
+
 
 class SimpleCache:
     """In-memory TTL cache fallback when Redis not configured.
