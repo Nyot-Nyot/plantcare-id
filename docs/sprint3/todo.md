@@ -592,38 +592,97 @@ See `backend/migrations/BULK_SYNC_OPTIMIZATION.md` for detailed analysis and ben
 
 ## Client - Guide UI Implementation
 
-### 4.1 Guide Model & Provider (1.5h)
+### 4.1 Guide Model & Provider (1.5h) ✅
 
 **Estimasi:** 1.5 jam
 **Priority:** High
+**Status:** ✅ **COMPLETED**
 
--   [ ] Buat model `TreatmentGuide` di `lib/models/treatment_guide.dart`
+-   [x] Buat model `TreatmentGuide` di `lib/models/treatment_guide.dart`
 
-    -   [ ] Properties: id, plantId, diseaseName, severity, guideType, steps, materials, estimatedDuration
-    -   [ ] JSON serialization (fromJson, toJson)
-    -   [ ] Validation methods
+    -   [x] Properties: id, plantId, diseaseName, severity, guideType, steps, materials, estimatedDuration
+    -   [x] JSON serialization (fromJson, toJson)
+    -   [x] Validation methods
 
--   [ ] Buat model `GuideStep` dengan properties:
+-   [x] Buat model `GuideStep` dengan properties:
 
-    -   [ ] stepNumber, title, description, imageUrl, materials, isCritical, estimatedTime
+    -   [x] stepNumber, title, description, imageUrl, materials, isCritical, estimatedTime
 
--   [ ] Buat `GuideService` di `lib/services/guide_service.dart`
+-   [x] Buat `GuideService` di `lib/services/guide_service.dart`
 
-    -   [ ] Method `fetchGuideById(String guideId)`
-    -   [ ] Method `fetchGuidesByPlant(String plantId)`
-    -   [ ] Cache dengan TTL 24 jam (gunakan Hive/shared_preferences)
+    -   [x] Method `getGuideById(String id)` - fetch from API with caching
+    -   [x] Method `getGuidesByPlantId(String plantId)` - fetch list with pagination
+    -   [x] Cache dengan TTL 24 jam (gunakan shared_preferences)
 
--   [ ] Buat Riverpod provider `guideProvider` dan `guideStepsProvider`
-    -   [ ] State management untuk current guide
-    -   [ ] State untuk current step index
-    -   [ ] State untuk completed steps (Set<int>)
+-   [x] Buat Riverpod provider `guideProvider` dan `guideStepsProvider`
+    -   [x] State management untuk current guide
+    -   [x] State untuk current step index
+    -   [x] State untuk completed steps (Set<int>)
 
 **Acceptance Criteria:**
 
--   Model memiliki serialization yang benar
--   Service dapat fetch dan cache guides
--   Provider memanage state dengan baik
--   Type-safe dan null-safe
+-   ✅ Model memiliki serialization yang benar
+-   ✅ Service dapat fetch dan cache guides
+-   ✅ Provider memanage state dengan baik
+-   ✅ Type-safe dan null-safe
+
+**Implementation Summary:**
+
+**Files Created:**
+
+-   `lib/models/treatment_guide.dart` (310 lines)
+
+    -   `GuideStep` model: stepNumber, title, description, imageUrl, materials, isCritical, estimatedTime
+    -   `TreatmentGuide` model: id, plantId, diseaseName, severity, guideType, steps, materials, estimatedDuration, createdAt, updatedAt
+    -   Full JSON serialization (fromJson/toJson)
+    -   copyWith methods for immutability
+    -   Validation methods: isValid(), hasValidSteps()
+    -   Utility getters: totalSteps, criticalSteps, severityLevel
+
+-   `lib/services/guide_service.dart` (304 lines)
+
+    -   `getGuideById(String id)` - fetch single guide with caching
+    -   `getGuidesByPlantId(String plantId, {limit, offset})` - fetch list with pagination
+    -   Cache management with shared_preferences (TTL: 24 hours)
+    -   Methods: clearCache(), clearGuideCache(id)
+    -   Timeout handling (30 seconds)
+    -   Comprehensive error handling
+
+-   `lib/providers/guide_provider.dart` (260 lines)
+    -   `guideServiceProvider` - GuideService singleton
+    -   `guideProvider` - Current guide state (StateNotifier)
+    -   `guideListProvider` - Guide list state with .family for plant-specific lists
+    -   `completedStepsProvider` - Completed steps tracking (Set<int>)
+    -   Derived providers:
+        -   `guideStepsProvider` - Get steps from current guide
+        -   `currentStepNumberProvider` - Next incomplete step number
+        -   `guideProgressProvider` - Completion percentage (0.0-1.0)
+        -   `isGuideCompletedProvider` - Check if all steps completed
+        -   `criticalStepsProvider` - Filter critical steps
+        -   `remainingStepsProvider` - Get incomplete steps
+
+**Technical Decisions:**
+
+-   Used shared_preferences for caching (simpler than Hive for TTL-based cache)
+-   Cache key format: `guide_cache_id_{id}` and `guide_cache_plant_{plantId}_limit{N}_offset{M}`
+-   Cache time tracking with separate keys: `guide_cache_time_{key}`
+-   StateNotifier pattern for guide and guide list management
+-   Family provider for plant-specific guide lists (auto-loading)
+-   Derived providers for computed state (progress, current step, etc.)
+-   Comprehensive error handling with try-catch and AsyncValue states
+
+**API Integration:**
+
+-   Backend endpoint: `GET /api/guides/{id}`
+-   Backend endpoint: `GET /api/guides/by-plant/{plantId}?limit=N&offset=M`
+-   Response caching with 24-hour TTL
+-   Automatic cache invalidation on expiry
+
+**Next Steps:**
+
+-   Task 4.2: Build GuideStepScreen UI with step-by-step navigation
+-   Task 4.3: Build GuideListScreen with search and filtering
+-   Task 4.4: Implement completion screen and feedback
 
 ---
 
