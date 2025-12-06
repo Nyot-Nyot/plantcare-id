@@ -511,6 +511,23 @@ POST   /api/collections/{id}/care      # Record care action
 
 **Total Collection Endpoints:** 8 (5 CRUD + 3 sync/batch operations)
 
+**⚠️ Transactional Improvement (2025-12-06):**
+
+The `record_care_action` method was refactored to ensure atomicity and data integrity. Previously, it performed separate database writes which could leave data in an inconsistent state if any operation failed.
+
+**Changes Made:**
+
+-   Created PostgreSQL function `record_care_action()` in `backend/migrations/004_record_care_action_function.sql`
+-   Function encapsulates all operations in a single transaction:
+    1. Verifies collection ownership
+    2. Inserts into care_history table
+    3. Updates plant_collections (last_care_date, next_care_date)
+-   Updated `CollectionService.record_care_action()` to call PostgreSQL function via Supabase RPC
+-   All operations now succeed or fail atomically
+
+**Migration Required:**
+Apply the SQL migration in `backend/migrations/004_record_care_action_function.sql` via Supabase Dashboard or CLI. See `backend/migrations/README.md` for instructions.
+
 ---
 
 ## Client - Guide UI Implementation

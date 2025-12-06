@@ -574,12 +574,16 @@ class CollectionService:
         self, collection_id: UUID, user_id: UUID, care_data: CareHistoryCreate
     ) -> tuple[CareHistoryResponse, PlantCollectionResponse]:
         """
-        Record a care action for a collection.
+        Record a care action for a collection using an atomic PostgreSQL function.
 
-        This method:
-        1. Creates a new care_history record
-        2. Updates the collection's last_care_date to current time
-        3. Recalculates next_care_date based on care_frequency_days
+        This method calls a PostgreSQL function that atomically:
+        1. Verifies collection exists and user owns it
+        2. Creates a new care_history record
+        3. Updates the collection's last_care_date to current time
+        4. Recalculates next_care_date based on care_frequency_days
+
+        All operations are performed within a single database transaction,
+        ensuring data consistency even if errors occur.
 
         Args:
             collection_id: UUID of the collection
@@ -596,87 +600,54 @@ class CollectionService:
         self._check_configured()
 
         try:
-            # Verify collection exists and user owns it
-            collection = await self.get_collection_by_id(collection_id)
-            if not collection:
-                raise CollectionServiceError(
-                    f"Collection {collection_id} not found or access denied"
-                )
+            # Prepare RPC payload
+            rpc_payload = {
+                "p_collection_id": str(collection_id),
+                "p_user_id": str(user_id),
+                "p_care_type": care_data.care_type,
+                "p_notes": care_data.notes,
+            }
 
-            # Verify ownership
-            if collection.user_id != user_id:
-                raise CollectionServiceError(
-                    f"Collection {collection_id} not found or access denied"
-                )
-
-            # Create care history record
-            care_payload = care_data.model_dump(exclude_unset=True)
-            care_payload["collection_id"] = str(collection_id)
-            if care_payload.get("care_date"):
-                care_payload["care_date"] = care_payload["care_date"].isoformat()
+            # Add care_date if provided, otherwise PostgreSQL function uses NOW()
+            if care_data.care_date:
+                rpc_payload["p_care_date"] = care_data.care_date.isoformat()
 
             async with httpx.AsyncClient() as client:
-                # Insert care history
-                care_response = await client.post(
-                    f"{self.base_url}/care_history",
+                # Call PostgreSQL function via Supabase RPC
+                response = await client.post(
+                    f"{self.base_url}/rpc/record_care_action",
                     headers=self.headers,
-                    json=care_payload,
+                    json=rpc_payload,
                 )
 
-                if care_response.status_code != 201:
+                if response.status_code != 200:
+                    error_text = response.text
                     logger.error(
-                        f"Supabase error creating care history: "
-                        f"{care_response.status_code} - {care_response.text}"
+                        f"Supabase RPC error recording care action: "
+                        f"{response.status_code} - {error_text}"
                     )
+
+                    # Check for specific error messages
+                    if "not found or access denied" in error_text.lower():
+                        raise CollectionServiceError(
+                            f"Collection {collection_id} not found or access denied"
+                        )
+
                     raise SupabaseError(
-                        "Database error while creating care history",
-                        status_code=care_response.status_code,
-                        response_text=care_response.text,
+                        "Database error while recording care action",
+                        status_code=response.status_code,
+                        response_text=error_text,
                     )
 
-                care_result = care_response.json()
-                if isinstance(care_result, list) and len(care_result) > 0:
-                    care_result = care_result[0]
+                result = response.json()
 
-                # Update collection: last_care_date and next_care_date
-                now = datetime.utcnow()
-                update_payload = {
-                    "last_care_date": now.isoformat(),
-                }
-
-                # Recalculate next_care_date if care_frequency_days is set
-                if collection.care_frequency_days:
-                    next_care = now + timedelta(days=collection.care_frequency_days)
-                    update_payload["next_care_date"] = next_care.isoformat()
-
-                collection_response = await client.patch(
-                    f"{self.base_url}/plant_collections",
-                    headers=self.headers,
-                    params={"id": f"eq.{collection_id}"},
-                    json=update_payload,
-                )
-
-                if collection_response.status_code != 200:
-                    logger.error(
-                        f"Supabase error updating collection after care: "
-                        f"{collection_response.status_code} - {collection_response.text}"
-                    )
-                    raise SupabaseError(
-                        "Database error while updating collection",
-                        status_code=collection_response.status_code,
-                        response_text=collection_response.text,
-                    )
-
-                collection_result = collection_response.json()
-                if isinstance(collection_result, list) and len(collection_result) > 0:
-                    collection_result = collection_result[0]
-
+                # Parse the result from the PostgreSQL function
                 try:
-                    care_history = CareHistoryResponse(**care_result)
-                    updated_collection = PlantCollectionResponse(**collection_result)
+                    care_history = CareHistoryResponse(**result["care_history"])
+                    updated_collection = PlantCollectionResponse(**result["collection"])
                     return care_history, updated_collection
-                except ValidationError as e:
-                    logger.error(f"Failed to parse care/collection response: {e}")
+                except (KeyError, ValidationError) as e:
+                    logger.error(f"Failed to parse RPC response: {e}")
                     raise CollectionServiceError(
                         f"Invalid data from database: {e}"
                     )
