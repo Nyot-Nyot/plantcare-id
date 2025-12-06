@@ -662,11 +662,15 @@ class CollectionService:
         This method calls a PostgreSQL function that atomically:
         1. Verifies collection exists and user owns it
         2. Creates a new care_history record
-        3. Updates the collection's last_care_date to current time
-        4. Recalculates next_care_date based on care_frequency_days
+        3. Updates the collection's last_care_date to the care_date (from request or NOW())
+        4. Recalculates next_care_date from that same care_date based on care_frequency_days
 
         All operations are performed within a single database transaction,
         ensuring data consistency even if errors occur.
+
+        Note: If care_data.care_date is provided, both last_care_date and next_care_date
+        are calculated from that date. This ensures correct date calculations when
+        back-dating care actions.
 
         Args:
             collection_id: UUID of the collection

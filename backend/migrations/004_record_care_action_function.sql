@@ -53,9 +53,9 @@ BEGIN
     )
     RETURNING * INTO v_care_history;
 
-    -- Step 4: Calculate next care date
+    -- Step 4: Calculate next care date based on the actual care date
     IF v_collection.care_frequency_days IS NOT NULL THEN
-        v_next_care_date := NOW() + (v_collection.care_frequency_days || ' days')::INTERVAL;
+        v_next_care_date := p_care_date + (v_collection.care_frequency_days || ' days')::INTERVAL;
     ELSE
         v_next_care_date := NULL;
     END IF;
@@ -63,7 +63,7 @@ BEGIN
     -- Step 5: Update collection with new care dates
     UPDATE plant_collections
     SET
-        last_care_date = NOW(),
+        last_care_date = p_care_date,
         next_care_date = v_next_care_date,
         updated_at = NOW()
     WHERE id = p_collection_id
@@ -87,6 +87,8 @@ $$;
 -- Add comment explaining the function
 COMMENT ON FUNCTION record_care_action IS
 'Atomically records a care action by creating a care_history entry and updating the plant_collections table.
+The last_care_date is set to the provided p_care_date (or NOW() if not provided),
+and next_care_date is calculated from that same date using care_frequency_days.
 All operations are performed within a single transaction to ensure data consistency.';
 
 -- Grant execute permission to authenticated users
