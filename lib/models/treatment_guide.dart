@@ -4,6 +4,8 @@
 /// Includes GuideStep and TreatmentGuide with full serialization support.
 library;
 
+import 'package:collection/collection.dart';
+
 /// Represents a single step in a treatment guide
 class GuideStep {
   final int stepNumber;
@@ -35,7 +37,7 @@ class GuideStep {
     final stepNumber = (stepNumberJson as num?)?.toInt();
     if (stepNumber == null || stepNumber <= 0) {
       throw FormatException(
-        'Invalid step_number: $stepNumberJson (must be a positive integer)'
+        'Invalid step_number: $stepNumberJson (must be a positive integer)',
       );
     }
 
@@ -117,6 +119,7 @@ class GuideStep {
         other.title == title &&
         other.description == description &&
         other.imageUrl == imageUrl &&
+        const ListEquality().equals(other.materials, materials) &&
         other.isCritical == isCritical &&
         other.estimatedTime == estimatedTime;
   }
@@ -128,6 +131,7 @@ class GuideStep {
       title,
       description,
       imageUrl,
+      const ListEquality().hash(materials),
       isCritical,
       estimatedTime,
     );
@@ -336,11 +340,28 @@ class TreatmentGuide {
         other.id == id &&
         other.plantId == plantId &&
         other.diseaseName == diseaseName &&
-        other.severity == severity;
+        other.severity == severity &&
+        other.guideType == guideType &&
+        const ListEquality().equals(other.steps, steps) &&
+        const ListEquality().equals(other.materials, materials) &&
+        other.estimatedDuration == estimatedDuration &&
+        other.createdAt == createdAt &&
+        other.updatedAt == updatedAt;
   }
 
   @override
   int get hashCode {
-    return Object.hash(id, plantId, diseaseName, severity);
+    return Object.hash(
+      id,
+      plantId,
+      diseaseName,
+      severity,
+      guideType,
+      const ListEquality().hash(steps),
+      const ListEquality().hash(materials),
+      estimatedDuration,
+      createdAt,
+      updatedAt,
+    );
   }
 }

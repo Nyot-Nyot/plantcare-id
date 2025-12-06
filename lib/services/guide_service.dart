@@ -46,7 +46,7 @@ class GuideService {
 
       if (response.statusCode == 200) {
         final jsonBody = json.decode(response.body) as Map<String, dynamic>;
-        
+
         // This will throw FormatException if data is invalid
         final guide = TreatmentGuide.fromJson(jsonBody);
 
