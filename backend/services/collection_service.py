@@ -335,8 +335,6 @@ class CollectionService:
             payload = data.model_dump(exclude_unset=True, exclude_none=True)
 
             # Convert datetime objects to ISO format strings
-            if "identified_at" in payload and payload["identified_at"]:
-                payload["identified_at"] = payload["identified_at"].isoformat()
             if "last_care_date" in payload and payload["last_care_date"]:
                 payload["last_care_date"] = payload["last_care_date"].isoformat()
             if "next_care_date" in payload and payload["next_care_date"]:
