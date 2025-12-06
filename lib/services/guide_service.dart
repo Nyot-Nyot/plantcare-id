@@ -209,12 +209,12 @@ class GuideService {
 
   // Private helper: Generic cache retrieval with TTL validation
   /// Retrieves a cached item from SharedPreferences with automatic TTL validation.
-  /// 
+  ///
   /// Returns null if:
   /// - Cache doesn't exist
   /// - Cache is expired (automatically removes expired cache)
   /// - Deserialization fails
-  /// 
+  ///
   /// [key] - The cache key (without prefix)
   /// [fromJson] - Function to deserialize the JSON map to type T
   Future<T?> _getCachedItem<T>(
@@ -277,7 +277,7 @@ class GuideService {
 
   // Private helper: Generic cache storage
   /// Stores a JSON-serializable item in SharedPreferences with timestamp.
-  /// 
+  ///
   /// [key] - The cache key (without prefix)
   /// [data] - The data to cache (must be JSON-encodable)
   Future<void> _cacheItem(String key, dynamic data) async {
