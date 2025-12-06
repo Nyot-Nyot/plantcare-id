@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from backend.auth import verify_auth_token
 from backend.models.plant_collection import (
+    HealthStatus,
     PlantCollectionCreate,
     PlantCollectionResponse,
     PlantCollectionUpdate,
@@ -99,7 +100,7 @@ async def create_collection(
 
 @router.get("", response_model=dict)
 async def get_user_collections(
-    health_status: Optional[str] = Query(
+    health_status: Optional[HealthStatus] = Query(
         None,
         description="Filter by health status (healthy, needs_attention, sick)",
     ),
@@ -123,18 +124,8 @@ async def get_user_collections(
         # Convert user_id string to UUID
         user_uuid = UUID(user_id)
 
-        # Validate health_status if provided
-        if health_status and health_status not in [
-            "healthy",
-            "needs_attention",
-            "sick",
-        ]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid health_status. Must be one of: healthy, needs_attention, sick",
-            )
-
         # Fetch collections from service
+        # FastAPI automatically validates health_status against HealthStatus type
         logger.info(
             f"Fetching collections for user {user_id} "
             f"(health_status: {health_status}, limit: {limit}, offset: {offset})"
