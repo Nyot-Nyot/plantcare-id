@@ -186,41 +186,56 @@ class GuideService {
 
   // Private helper: Get cached guide
   Future<TreatmentGuide?> _getCachedGuide(String key) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // Check if cache exists and is not expired
-      final cacheTimeKey = '$_cacheTimePrefix$key';
-      final cachedTimeStr = prefs.getString(cacheTimeKey);
-
-      if (cachedTimeStr != null) {
-        final cachedTime = DateTime.parse(cachedTimeStr);
-        final now = DateTime.now();
-
-        if (now.difference(cachedTime) < _cacheTTL) {
-          // Cache is still valid
-          final cacheKey = '$_cachePrefix$key';
-          final cachedJson = prefs.getString(cacheKey);
-
-          if (cachedJson != null) {
-            final jsonMap = json.decode(cachedJson) as Map<String, dynamic>;
-            return TreatmentGuide.fromJson(jsonMap);
-          }
-        } else {
-          // Cache expired, remove it
-          await prefs.remove('$_cachePrefix$key');
-          await prefs.remove(cacheTimeKey);
-        }
-      }
-    } catch (e) {
-      // Ignore cache errors and fetch from API
-    }
-
-    return null;
+    return _getCachedItem<TreatmentGuide>(
+      key,
+      (jsonMap) => TreatmentGuide.fromJson(jsonMap),
+    );
   }
 
   // Private helper: Get cached guide list
   Future<List<TreatmentGuide>?> _getCachedGuideList(String key) async {
+    final cachedJson = await _getCachedRawJson(key);
+    if (cachedJson == null) return null;
+
+    try {
+      final jsonList = json.decode(cachedJson) as List;
+      return jsonList
+          .map((item) => TreatmentGuide.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Private helper: Generic cache retrieval with TTL validation
+  /// Retrieves a cached item from SharedPreferences with automatic TTL validation.
+  /// 
+  /// Returns null if:
+  /// - Cache doesn't exist
+  /// - Cache is expired (automatically removes expired cache)
+  /// - Deserialization fails
+  /// 
+  /// [key] - The cache key (without prefix)
+  /// [fromJson] - Function to deserialize the JSON map to type T
+  Future<T?> _getCachedItem<T>(
+    String key,
+    T Function(Map<String, dynamic>) fromJson,
+  ) async {
+    final cachedJson = await _getCachedRawJson(key);
+    if (cachedJson == null) return null;
+
+    try {
+      final jsonMap = json.decode(cachedJson) as Map<String, dynamic>;
+      return fromJson(jsonMap);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Private helper: Get raw cached JSON string with TTL validation
+  /// Core caching logic: retrieves raw JSON string from cache if valid.
+  /// Handles TTL checking and automatic cleanup of expired cache.
+  Future<String?> _getCachedRawJson(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -235,17 +250,7 @@ class GuideService {
         if (now.difference(cachedTime) < _cacheTTL) {
           // Cache is still valid
           final cacheKey = '$_cachePrefix$key';
-          final cachedJson = prefs.getString(cacheKey);
-
-          if (cachedJson != null) {
-            final jsonList = json.decode(cachedJson) as List;
-            return jsonList
-                .map(
-                  (item) =>
-                      TreatmentGuide.fromJson(item as Map<String, dynamic>),
-                )
-                .toList();
-          }
+          return prefs.getString(cacheKey);
         } else {
           // Cache expired, remove it
           await prefs.remove('$_cachePrefix$key');
@@ -253,7 +258,7 @@ class GuideService {
         }
       }
     } catch (e) {
-      // Ignore cache errors and fetch from API
+      // Ignore cache errors and return null
     }
 
     return null;
@@ -261,26 +266,24 @@ class GuideService {
 
   // Private helper: Cache a guide
   Future<void> _cacheGuide(String key, TreatmentGuide guide) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonStr = json.encode(guide.toJson());
-
-      await prefs.setString('$_cachePrefix$key', jsonStr);
-      await prefs.setString(
-        '$_cacheTimePrefix$key',
-        DateTime.now().toIso8601String(),
-      );
-    } catch (e) {
-      // Ignore cache errors
-    }
+    await _cacheItem(key, guide.toJson());
   }
 
   // Private helper: Cache a guide list
   Future<void> _cacheGuideList(String key, List<TreatmentGuide> guides) async {
+    final jsonList = guides.map((g) => g.toJson()).toList();
+    await _cacheItem(key, jsonList);
+  }
+
+  // Private helper: Generic cache storage
+  /// Stores a JSON-serializable item in SharedPreferences with timestamp.
+  /// 
+  /// [key] - The cache key (without prefix)
+  /// [data] - The data to cache (must be JSON-encodable)
+  Future<void> _cacheItem(String key, dynamic data) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final jsonList = guides.map((g) => g.toJson()).toList();
-      final jsonStr = json.encode(jsonList);
+      final jsonStr = json.encode(data);
 
       await prefs.setString('$_cachePrefix$key', jsonStr);
       await prefs.setString(
