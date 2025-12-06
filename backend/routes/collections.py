@@ -20,6 +20,8 @@ from backend.models.plant_collection import (
     PlantCollectionUpdate,
 )
 from backend.services.collection_service import (
+    CollectionAccessDeniedError,
+    CollectionNotFoundError,
     CollectionService,
     CollectionServiceError,
     SupabaseError,
@@ -567,13 +569,20 @@ async def record_care_action(
             collection=updated_collection,
         )
 
+    except CollectionNotFoundError as e:
+        # Collection does not exist
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+    except CollectionAccessDeniedError as e:
+        # User does not own the collection
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e),
+        )
     except CollectionServiceError as e:
-        # Handle not found or access denied
-        if "not found" in str(e).lower() or "access denied" in str(e).lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Collection with ID '{collection_id}' not found",
-            )
+        # Other service errors (validation, parsing, etc.)
         logger.error(f"Service error recording care action: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -34,7 +34,17 @@ class SupabaseError(Exception):
 
 
 class CollectionServiceError(Exception):
-    """Custom exception for CollectionService errors."""
+    """Base exception for CollectionService errors."""
+    pass
+
+
+class CollectionNotFoundError(CollectionServiceError):
+    """Exception raised when a collection is not found."""
+    pass
+
+
+class CollectionAccessDeniedError(CollectionServiceError):
+    """Exception raised when user does not have access to a collection."""
     pass
 
 
@@ -627,10 +637,17 @@ class CollectionService:
                         f"{response.status_code} - {error_text}"
                     )
 
-                    # Check for specific error messages
-                    if "not found or access denied" in error_text.lower():
-                        raise CollectionServiceError(
-                            f"Collection {collection_id} not found or access denied"
+                    # Check for specific error messages from PostgreSQL function
+                    error_lower = error_text.lower()
+                    
+                    if "collection not found" in error_lower:
+                        raise CollectionNotFoundError(
+                            f"Collection {collection_id} not found"
+                        )
+                    
+                    if "access denied" in error_lower:
+                        raise CollectionAccessDeniedError(
+                            f"Access denied to collection {collection_id}"
                         )
 
                     raise SupabaseError(

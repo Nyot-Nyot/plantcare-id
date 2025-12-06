@@ -97,6 +97,28 @@ response = await client.post(f"{self.base_url}/rpc/record_care_action", ...)
 -   Database-level optimization opportunities
 -   Reduced latency for client requests
 
+### Error Handling Improvement (2025-12-06)
+
+**Problem**: The original error handling relied on brittle string matching (`"not found" in str(e).lower()`), and mapped both "not found" and "access denied" to HTTP 404, which is incorrect for authorization failures.
+
+**Solution**: Implemented specific exception types and proper error codes:
+
+-   **Exception Types**:
+    -   `CollectionNotFoundError`: Raised when collection doesn't exist (HTTP 404)
+    -   `CollectionAccessDeniedError`: Raised when user doesn't own collection (HTTP 403)
+    -   `CollectionServiceError`: Base exception for other service errors (HTTP 500)
+
+-   **PostgreSQL Function Updates**:
+    -   Separate ownership check from existence check
+    -   Distinct error codes: `P0002` (not found), `P0003` (access denied)
+    -   Clear error messages for each case
+
+-   **Benefits**:
+    -   Type-safe error handling (no string matching)
+    -   Correct HTTP status codes (404 vs 403)
+    -   More maintainable code
+    -   Better client error messages
+
 ## Migration Steps
 
 ### Prerequisites

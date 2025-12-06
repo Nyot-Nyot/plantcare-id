@@ -26,15 +26,20 @@ BEGIN
     -- Step 1: Verify collection exists and user owns it
     SELECT * INTO v_collection
     FROM plant_collections
-    WHERE id = p_collection_id
-    AND user_id = p_user_id;
+    WHERE id = p_collection_id;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Collection not found or access denied'
-            USING ERRCODE = 'P0001';
+        RAISE EXCEPTION 'Collection not found'
+            USING ERRCODE = 'P0002';
     END IF;
 
-    -- Step 2: Insert care history record
+    -- Step 2: Verify ownership
+    IF v_collection.user_id != p_user_id THEN
+        RAISE EXCEPTION 'Access denied'
+            USING ERRCODE = 'P0003';
+    END IF;
+
+    -- Step 3: Insert care history record
     INSERT INTO care_history (
         collection_id,
         care_type,
@@ -48,14 +53,14 @@ BEGIN
     )
     RETURNING * INTO v_care_history;
 
-    -- Step 3: Calculate next care date
+    -- Step 4: Calculate next care date
     IF v_collection.care_frequency_days IS NOT NULL THEN
         v_next_care_date := NOW() + (v_collection.care_frequency_days || ' days')::INTERVAL;
     ELSE
         v_next_care_date := NULL;
     END IF;
 
-    -- Step 4: Update collection with new care dates
+    -- Step 5: Update collection with new care dates
     UPDATE plant_collections
     SET 
         last_care_date = NOW(),
@@ -64,7 +69,7 @@ BEGIN
     WHERE id = p_collection_id
     RETURNING * INTO v_collection;
 
-    -- Step 5: Build JSON response with both care_history and updated collection
+    -- Step 6: Build JSON response with both care_history and updated collection
     v_result := json_build_object(
         'care_history', row_to_json(v_care_history),
         'collection', row_to_json(v_collection)

@@ -528,6 +528,23 @@ The `record_care_action` method was refactored to ensure atomicity and data inte
 **Migration Required:**
 Apply the SQL migration in `backend/migrations/004_record_care_action_function.sql` via Supabase Dashboard or CLI. See `backend/migrations/README.md` for instructions.
 
+**⚠️ Error Handling Improvement (2025-12-06):**
+
+The error handling in the care action endpoint was refactored to use specific exception types instead of brittle string matching.
+
+**Changes Made:**
+-   Created specific exception types: `CollectionNotFoundError` (404) and `CollectionAccessDeniedError` (403)
+-   Updated PostgreSQL function to separate existence check from ownership check
+-   Updated service layer to raise specific exceptions based on error type
+-   Updated routes to handle exceptions with correct HTTP status codes (404 vs 403)
+-   Removed brittle string matching logic (`"not found" in str(e).lower()`)
+
+**Benefits:**
+-   Type-safe error handling without string matching
+-   Correct HTTP status codes for different error scenarios
+-   More maintainable and robust code
+-   Better client error messages
+
 ---
 
 ## Client - Guide UI Implementation
