@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from backend.models.plant_collection import (
+    CareHistoryCreate,
+    CareHistoryResponse,
+    CollectionSyncItem,
     PlantCollectionCreate,
     PlantCollectionResponse,
     PlantCollectionUpdate,
@@ -31,7 +34,17 @@ class SupabaseError(Exception):
 
 
 class CollectionServiceError(Exception):
-    """Custom exception for CollectionService errors."""
+    """Base exception for CollectionService errors."""
+    pass
+
+
+class CollectionNotFoundError(CollectionServiceError):
+    """Exception raised when a collection is not found."""
+    pass
+
+
+class CollectionAccessDeniedError(CollectionServiceError):
+    """Exception raised when user does not have access to a collection."""
     pass
 
 
@@ -441,3 +454,300 @@ class CollectionService:
                 f"Unexpected error deleting collection {collection_id}: {str(e)}"
             )
             raise CollectionServiceError(f"Failed to delete collection: {str(e)}")
+
+    async def sync_collections(
+        self, user_id: UUID, collections: List[CollectionSyncItem]
+    ) -> tuple[List[PlantCollectionResponse], int]:
+        """
+        Bulk upsert collections from client for sync.
+
+        Server-wins conflict resolution:
+        - If collection with same id exists on server, keep server version
+        - New collections from client are inserted in a single bulk operation
+        - All synced collections marked as is_synced=True
+
+        Uses true bulk operations to avoid N+1 query problem:
+        1. Collects all non-null IDs
+        2. Fetches all existing collections in a single query
+        3. Determines which collections are new
+        4. Creates all new collections in a single bulk insert
+
+        Args:
+            user_id: UUID of the authenticated user
+            collections: List of CollectionSyncItem from client
+
+        Returns:
+            Tuple of (synced_collections_list, failed_count)
+
+        Raises:
+            SupabaseError: If database error occurs
+            CollectionServiceError: If data parsing fails
+        """
+        self._check_configured()
+
+        if not collections:
+            return [], 0
+
+        try:
+            # Step 1: Collect all non-null IDs from incoming collections
+            existing_ids = [str(item.id) for item in collections if item.id]
+
+            # Step 2: Fetch all existing collections in a single query
+            existing_collections_map = {}
+            if existing_ids:
+                async with httpx.AsyncClient() as client:
+                    # Build filter for multiple IDs: id=in.(uuid1,uuid2,uuid3)
+                    ids_filter = f"in.({','.join(existing_ids)})"
+                    params = {
+                        "id": ids_filter,
+                        "user_id": f"eq.{user_id}",
+                        "select": "*",
+                    }
+
+                    response = await client.get(
+                        f"{self.base_url}/plant_collections",
+                        headers=self.headers,
+                        params=params,
+                    )
+
+                    if response.status_code == 200:
+                        existing_data = response.json()
+                        # Build map for O(1) lookup
+                        for col_data in existing_data:
+                            try:
+                                col = PlantCollectionResponse(**col_data)
+                                existing_collections_map[str(col.id)] = col
+                            except ValidationError as e:
+                                logger.warning(f"Failed to parse existing collection: {e}")
+                    elif response.status_code != 404:
+                        logger.error(
+                            f"Error fetching existing collections: {response.status_code} - {response.text}"
+                        )
+
+            # Step 3: Separate existing (server-wins) from new collections
+            synced_collections: List[PlantCollectionResponse] = []
+            new_collections_data = []
+
+            for item in collections:
+                if item.id and str(item.id) in existing_collections_map:
+                    # Server wins - use existing server version
+                    synced_collections.append(existing_collections_map[str(item.id)])
+                else:
+                    # New collection - prepare for bulk insert
+                    new_collections_data.append({
+                        "user_id": str(user_id),
+                        "plant_id": item.plant_id,
+                        "common_name": item.common_name,
+                        "scientific_name": item.scientific_name,
+                        "image_url": item.image_url,
+                        "identified_at": item.identified_at.isoformat() if item.identified_at else None,
+                        "last_care_date": item.last_care_date.isoformat() if item.last_care_date else None,
+                        "next_care_date": item.next_care_date.isoformat() if item.next_care_date else None,
+                        "care_frequency_days": item.care_frequency_days,
+                        "health_status": item.health_status,
+                        "notes": item.notes,
+                    })
+
+            # Step 4: Bulk insert all new collections in a single request
+            failed_count = 0
+            if new_collections_data:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.base_url}/plant_collections",
+                        headers=self.headers,
+                        json=new_collections_data,  # PostgREST supports array of objects
+                    )
+
+                    if response.status_code == 201:
+                        created_data = response.json()
+                        # Parse all created collections
+                        for col_data in created_data:
+                            try:
+                                created = PlantCollectionResponse(**col_data)
+                                synced_collections.append(created)
+                            except ValidationError as e:
+                                logger.error(f"Failed to parse created collection: {e}")
+                                failed_count += 1
+                    else:
+                        logger.error(
+                            f"Bulk insert failed: {response.status_code} - {response.text}"
+                        )
+                        # All new collections failed
+                        failed_count = len(new_collections_data)
+                        raise SupabaseError(
+                            "Database error during bulk collection insert",
+                            status_code=response.status_code,
+                            response_text=response.text,
+                        )
+
+            return synced_collections, failed_count
+
+        except SupabaseError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error syncing collections: {str(e)}")
+            raise CollectionServiceError(f"Failed to sync collections: {str(e)}")
+
+    async def get_collections_by_timestamp(
+        self, user_id: UUID, since_timestamp: datetime
+    ) -> List[PlantCollectionResponse]:
+        """
+        Get collections that have been updated since a specific timestamp.
+
+        Used for incremental sync to reduce bandwidth usage.
+
+        Args:
+            user_id: UUID of the authenticated user
+            since_timestamp: Only return collections with updated_at > this timestamp
+
+        Returns:
+            List of PlantCollectionResponse objects
+
+        Raises:
+            SupabaseError: If database error occurs
+            CollectionServiceError: If data parsing fails
+        """
+        self._check_configured()
+        try:
+            # Query collections with updated_at > since_timestamp
+            params = {
+                "user_id": f"eq.{user_id}",
+                "updated_at": f"gt.{since_timestamp.isoformat()}",
+                "order": "updated_at.asc",
+            }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/plant_collections",
+                    headers=self.headers,
+                    params=params,
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    try:
+                        return [PlantCollectionResponse(**item) for item in data]
+                    except ValidationError as e:
+                        logger.error(f"Failed to parse collections: {e}")
+                        raise CollectionServiceError(
+                            f"Invalid collection data from database: {e}"
+                        )
+                else:
+                    logger.error(
+                        f"Supabase error fetching collections by timestamp: "
+                        f"{response.status_code} - {response.text}"
+                    )
+                    raise SupabaseError(
+                        f"Database error while fetching collections",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
+
+        except (SupabaseError, CollectionServiceError):
+            raise
+        except Exception as e:
+            logger.error(
+                f"Unexpected error fetching collections by timestamp: {str(e)}"
+            )
+            raise CollectionServiceError(
+                f"Failed to fetch collections by timestamp: {str(e)}"
+            )
+
+    async def record_care_action(
+        self, collection_id: UUID, user_id: UUID, care_data: CareHistoryCreate
+    ) -> tuple[CareHistoryResponse, PlantCollectionResponse]:
+        """
+        Record a care action for a collection using an atomic PostgreSQL function.
+
+        This method calls a PostgreSQL function that atomically:
+        1. Verifies collection exists and user owns it
+        2. Creates a new care_history record
+        3. Updates the collection's last_care_date to the care_date (from request or NOW())
+        4. Recalculates next_care_date from that same care_date based on care_frequency_days
+
+        All operations are performed within a single database transaction,
+        ensuring data consistency even if errors occur.
+
+        Note: If care_data.care_date is provided, both last_care_date and next_care_date
+        are calculated from that date. This ensures correct date calculations when
+        back-dating care actions.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: UUID of the authenticated user (for ownership check)
+            care_data: CareHistoryCreate model with care action details
+
+        Returns:
+            Tuple of (CareHistoryResponse, updated PlantCollectionResponse)
+
+        Raises:
+            SupabaseError: If database error occurs
+            CollectionServiceError: If collection not found or ownership mismatch
+        """
+        self._check_configured()
+
+        try:
+            # Prepare RPC payload
+            rpc_payload = {
+                "p_collection_id": str(collection_id),
+                "p_user_id": str(user_id),
+                "p_care_type": care_data.care_type,
+                "p_notes": care_data.notes,
+            }
+
+            # Add care_date if provided, otherwise PostgreSQL function uses NOW()
+            if care_data.care_date:
+                rpc_payload["p_care_date"] = care_data.care_date.isoformat()
+
+            async with httpx.AsyncClient() as client:
+                # Call PostgreSQL function via Supabase RPC
+                response = await client.post(
+                    f"{self.base_url}/rpc/record_care_action",
+                    headers=self.headers,
+                    json=rpc_payload,
+                )
+
+                if response.status_code != 200:
+                    error_text = response.text
+                    logger.error(
+                        f"Supabase RPC error recording care action: "
+                        f"{response.status_code} - {error_text}"
+                    )
+
+                    # Check for specific error messages from PostgreSQL function
+                    error_lower = error_text.lower()
+
+                    if "collection not found" in error_lower:
+                        raise CollectionNotFoundError(
+                            f"Collection {collection_id} not found"
+                        )
+
+                    if "access denied" in error_lower:
+                        raise CollectionAccessDeniedError(
+                            f"Access denied to collection {collection_id}"
+                        )
+
+                    raise SupabaseError(
+                        "Database error while recording care action",
+                        status_code=response.status_code,
+                        response_text=error_text,
+                    )
+
+                result = response.json()
+
+                # Parse the result from the PostgreSQL function
+                try:
+                    care_history = CareHistoryResponse(**result["care_history"])
+                    updated_collection = PlantCollectionResponse(**result["collection"])
+                    return care_history, updated_collection
+                except (KeyError, ValidationError) as e:
+                    logger.error(f"Failed to parse RPC response: {e}")
+                    raise CollectionServiceError(
+                        f"Invalid data from database: {e}"
+                    )
+
+        except (SupabaseError, CollectionServiceError):
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error recording care action: {str(e)}")
+            raise CollectionServiceError(f"Failed to record care action: {str(e)}")

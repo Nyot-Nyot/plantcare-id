@@ -1,7 +1,7 @@
 """Plant Collection models for PlantCare.ID."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -9,6 +9,25 @@ from pydantic import BaseModel, Field, field_validator
 
 # Type aliases for health status
 HealthStatus = Literal["healthy", "needs_attention", "sick"]
+
+
+# Reusable validator function for optional string fields
+def validate_not_empty_if_provided(v: Optional[str]) -> Optional[str]:
+    """
+    Ensure optional string fields are not just whitespace if provided.
+
+    Args:
+        v: The string value to validate
+
+    Returns:
+        The stripped string if not empty, None if input was None
+
+    Raises:
+        ValueError: If the string is empty or only whitespace
+    """
+    if v is not None and (not v or not v.strip()):
+        raise ValueError("Field cannot be empty or whitespace")
+    return v.strip() if v else None
 
 
 class PlantCollectionBase(BaseModel):
@@ -78,11 +97,9 @@ class PlantCollectionCreate(PlantCollectionBase):
 
     @field_validator("scientific_name", "image_url", "notes")
     @classmethod
-    def validate_not_empty_if_provided(cls, v: Optional[str]) -> Optional[str]:
+    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         """Ensure optional string fields are not just whitespace if provided."""
-        if v is not None and (not v or not v.strip()):
-            raise ValueError("Field cannot be empty or whitespace")
-        return v.strip() if v else None
+        return validate_not_empty_if_provided(v)
 
 
 class PlantCollectionUpdate(BaseModel):
@@ -116,11 +133,9 @@ class PlantCollectionUpdate(BaseModel):
 
     @field_validator("common_name", "scientific_name", "image_url", "notes")
     @classmethod
-    def validate_not_empty_if_provided(cls, v: Optional[str]) -> Optional[str]:
+    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
         """Ensure string fields are not just whitespace if provided."""
-        if v is not None and (not v or not v.strip()):
-            raise ValueError("Field cannot be empty or whitespace")
-        return v.strip() if v else None
+        return validate_not_empty_if_provided(v)
 
 
 class PlantCollectionResponse(PlantCollectionBase):
@@ -186,3 +201,90 @@ class CareHistoryResponse(CareHistoryBase):
         """Pydantic configuration."""
 
         from_attributes = True
+
+
+class CareActionRequest(BaseModel):
+    """Model for recording a care action via API."""
+
+    care_type: Literal[
+        "watering",
+        "fertilizing",
+        "pruning",
+        "repotting",
+        "pest_control",
+        "other",
+    ] = Field(
+        ...,
+        description="Type of care action performed",
+    )
+    notes: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Additional notes about the care action",
+    )
+    care_date: Optional[datetime] = Field(
+        None,
+        description="Date and time when care was performed (defaults to now if not provided)",
+    )
+
+
+class CareActionResponse(BaseModel):
+    """Model for care action response."""
+
+    care_history: CareHistoryResponse = Field(
+        ...,
+        description="The created care history record",
+    )
+    collection: PlantCollectionResponse = Field(
+        ...,
+        description="The updated collection with new last_care_date and next_care_date",
+    )
+
+
+class CollectionSyncItem(PlantCollectionBase):
+    """Model for syncing collection items from client to server."""
+
+    id: Optional[UUID] = Field(
+        None,
+        description="Client-side UUID (if exists), None for new items",
+    )
+    is_synced: bool = Field(
+        default=False,
+        description="Client sync status (will be set to True after server upsert)",
+    )
+    updated_at: Optional[datetime] = Field(
+        None,
+        description="Client-side last update timestamp",
+    )
+
+    @field_validator("common_name", "scientific_name", "image_url", "notes")
+    @classmethod
+    def validate_optional_fields(cls, v: Optional[str]) -> Optional[str]:
+        """Ensure string fields are not just whitespace if provided."""
+        return validate_not_empty_if_provided(v)
+
+
+class CollectionSyncRequest(BaseModel):
+    """Model for bulk sync request from client."""
+
+    collections: List[CollectionSyncItem] = Field(
+        ...,
+        description="List of collections to sync from client",
+    )
+
+
+class CollectionSyncResponse(BaseModel):
+    """Model for sync response to client."""
+
+    synced_count: int = Field(
+        ...,
+        description="Number of collections successfully synced",
+    )
+    failed_count: int = Field(
+        default=0,
+        description="Number of collections that failed to sync",
+    )
+    collections: List[PlantCollectionResponse] = Field(
+        ...,
+        description="Server versions of synced collections",
+    )
