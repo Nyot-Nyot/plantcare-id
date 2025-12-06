@@ -35,6 +35,83 @@ def get_collection_service() -> CollectionService:
     return _collection_service
 
 
+async def verify_collection_ownership(
+    collection_id: UUID,
+    user_id: str = Depends(verify_auth_token),
+) -> PlantCollectionResponse:
+    """
+    Dependency to verify collection exists and user owns it.
+
+    This dependency handles:
+    - UUID conversion and validation
+    - Collection existence check (404 if not found)
+    - Ownership verification (403 if not owner)
+    - Error handling for database issues
+
+    Args:
+        collection_id: UUID of the collection to verify
+        user_id: Authenticated user ID from JWT token
+
+    Returns:
+        PlantCollectionResponse if collection exists and user owns it
+
+    Raises:
+        HTTPException: 400 (invalid UUID), 404 (not found), 403 (forbidden), 503 (db error)
+    """
+    try:
+        # Convert user_id string to UUID
+        user_uuid = UUID(user_id)
+
+        # Fetch collection from service
+        collection = await get_collection_service().get_collection_by_id(collection_id)
+
+        if not collection:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Collection with ID '{collection_id}' not found",
+            )
+
+        # Check ownership
+        if collection.user_id != user_uuid:
+            logger.warning(
+                f"User {user_id} attempted to access collection {collection_id} "
+                f"owned by {collection.user_id}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to access this collection",
+            )
+
+        return collection
+
+    except ValueError as e:
+        logger.error(f"Invalid UUID format: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format",
+        )
+    except HTTPException:
+        raise
+    except SupabaseError as e:
+        logger.error(f"Database error fetching collection {collection_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service temporarily unavailable",
+        )
+    except CollectionServiceError as e:
+        logger.error(f"Service error fetching collection {collection_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while fetching collection",
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error fetching collection {collection_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
 @router.post(
     "",
     response_model=PlantCollectionResponse,
@@ -176,8 +253,7 @@ async def get_user_collections(
 
 @router.get("/{collection_id}", response_model=PlantCollectionResponse)
 async def get_collection_by_id(
-    collection_id: UUID,
-    user_id: str = Depends(verify_auth_token),
+    collection: PlantCollectionResponse = Depends(verify_collection_ownership),
 ):
     """
     Get a specific plant collection by ID.
@@ -190,66 +266,13 @@ async def get_collection_by_id(
     - **Returns**: Complete collection information
     - **Authorization**: Users can only access their own collections
     """
-    try:
-        # Convert user_id string to UUID
-        user_uuid = UUID(user_id)
-
-        # Fetch collection from service
-        logger.info(f"Fetching collection {collection_id} for user {user_id}")
-        collection = await get_collection_service().get_collection_by_id(collection_id)
-
-        if not collection:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Collection with ID '{collection_id}' not found",
-            )
-
-        # Check ownership
-        if collection.user_id != user_uuid:
-            logger.warning(
-                f"User {user_id} attempted to access collection {collection_id} "
-                f"owned by {collection.user_id}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to access this collection",
-            )
-
-        return collection
-
-    except ValueError as e:
-        logger.error(f"Invalid UUID format: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid ID format",
-        )
-    except HTTPException:
-        raise
-    except SupabaseError as e:
-        logger.error(f"Database error fetching collection {collection_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database service temporarily unavailable",
-        )
-    except CollectionServiceError as e:
-        logger.error(f"Service error fetching collection {collection_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error while fetching collection",
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error fetching collection {collection_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
+    return collection
 
 
 @router.put("/{collection_id}", response_model=PlantCollectionResponse)
 async def update_collection(
-    collection_id: UUID,
     update_data: PlantCollectionUpdate,
-    user_id: str = Depends(verify_auth_token),
+    collection: PlantCollectionResponse = Depends(verify_collection_ownership),
 ):
     """
     Update a plant collection entry.
@@ -264,68 +287,37 @@ async def update_collection(
     - **Returns**: Updated collection information
     """
     try:
-        # Convert user_id string to UUID
-        user_uuid = UUID(user_id)
-
-        # First, check if collection exists and verify ownership
-        existing_collection = await get_collection_service().get_collection_by_id(
-            collection_id
-        )
-
-        if not existing_collection:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Collection with ID '{collection_id}' not found",
-            )
-
-        # Check ownership
-        if existing_collection.user_id != user_uuid:
-            logger.warning(
-                f"User {user_id} attempted to update collection {collection_id} "
-                f"owned by {existing_collection.user_id}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to update this collection",
-            )
-
         # Update collection via service
-        logger.info(f"Updating collection {collection_id} for user {user_id}")
+        logger.info(f"Updating collection {collection.id}")
         updated_collection = await get_collection_service().update_collection(
-            collection_id=collection_id, data=update_data
+            collection_id=collection.id, data=update_data
         )
 
         if not updated_collection:
-            # This shouldn't happen since we checked existence above
+            # This shouldn't happen since we verified existence in dependency
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Collection with ID '{collection_id}' not found",
+                detail=f"Collection with ID '{collection.id}' not found",
             )
 
         return updated_collection
 
-    except ValueError as e:
-        logger.error(f"Invalid UUID format: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid ID format",
-        )
     except HTTPException:
         raise
     except SupabaseError as e:
-        logger.error(f"Database error updating collection {collection_id}: {str(e)}")
+        logger.error(f"Database error updating collection {collection.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database service temporarily unavailable",
         )
     except CollectionServiceError as e:
-        logger.error(f"Service error updating collection {collection_id}: {str(e)}")
+        logger.error(f"Service error updating collection {collection.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while updating collection",
         )
     except Exception as e:
-        logger.error(f"Unexpected error updating collection {collection_id}: {str(e)}")
+        logger.error(f"Unexpected error updating collection {collection.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
@@ -334,8 +326,7 @@ async def update_collection(
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_collection(
-    collection_id: UUID,
-    user_id: str = Depends(verify_auth_token),
+    collection: PlantCollectionResponse = Depends(verify_collection_ownership),
 ):
     """
     Delete a plant collection entry.
@@ -349,67 +340,36 @@ async def delete_collection(
     - **Returns**: 204 No Content on success
     """
     try:
-        # Convert user_id string to UUID
-        user_uuid = UUID(user_id)
-
-        # First, check if collection exists and verify ownership
-        existing_collection = await get_collection_service().get_collection_by_id(
-            collection_id
-        )
-
-        if not existing_collection:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Collection with ID '{collection_id}' not found",
-            )
-
-        # Check ownership
-        if existing_collection.user_id != user_uuid:
-            logger.warning(
-                f"User {user_id} attempted to delete collection {collection_id} "
-                f"owned by {existing_collection.user_id}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You don't have permission to delete this collection",
-            )
-
         # Delete collection via service
-        logger.info(f"Deleting collection {collection_id} for user {user_id}")
-        deleted = await get_collection_service().delete_collection(collection_id)
+        logger.info(f"Deleting collection {collection.id}")
+        deleted = await get_collection_service().delete_collection(collection.id)
 
         if not deleted:
-            # This shouldn't happen since we checked existence above
+            # This shouldn't happen since we verified existence in dependency
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Collection with ID '{collection_id}' not found",
+                detail=f"Collection with ID '{collection.id}' not found",
             )
 
         # Return 204 No Content (FastAPI handles this with status_code)
         return None
 
-    except ValueError as e:
-        logger.error(f"Invalid UUID format: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid ID format",
-        )
     except HTTPException:
         raise
     except SupabaseError as e:
-        logger.error(f"Database error deleting collection {collection_id}: {str(e)}")
+        logger.error(f"Database error deleting collection {collection.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database service temporarily unavailable",
         )
     except CollectionServiceError as e:
-        logger.error(f"Service error deleting collection {collection_id}: {str(e)}")
+        logger.error(f"Service error deleting collection {collection.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while deleting collection",
         )
     except Exception as e:
-        logger.error(f"Unexpected error deleting collection {collection_id}: {str(e)}")
+        logger.error(f"Unexpected error deleting collection {collection.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",
