@@ -533,6 +533,7 @@ Apply the SQL migration in `backend/migrations/004_record_care_action_function.s
 The error handling in the care action endpoint was refactored to use specific exception types instead of brittle string matching.
 
 **Changes Made:**
+
 -   Created specific exception types: `CollectionNotFoundError` (404) and `CollectionAccessDeniedError` (403)
 -   Updated PostgreSQL function to separate existence check from ownership check
 -   Updated service layer to raise specific exceptions based on error type
@@ -540,6 +541,7 @@ The error handling in the care action endpoint was refactored to use specific ex
 -   Removed brittle string matching logic (`"not found" in str(e).lower()`)
 
 **Benefits:**
+
 -   Type-safe error handling without string matching
 -   Correct HTTP status codes for different error scenarios
 -   More maintainable and robust code

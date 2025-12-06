@@ -62,7 +62,7 @@ BEGIN
 
     -- Step 5: Update collection with new care dates
     UPDATE plant_collections
-    SET 
+    SET
         last_care_date = NOW(),
         next_care_date = v_next_care_date,
         updated_at = NOW()
@@ -85,8 +85,8 @@ END;
 $$;
 
 -- Add comment explaining the function
-COMMENT ON FUNCTION record_care_action IS 
-'Atomically records a care action by creating a care_history entry and updating the plant_collections table. 
+COMMENT ON FUNCTION record_care_action IS
+'Atomically records a care action by creating a care_history entry and updating the plant_collections table.
 All operations are performed within a single transaction to ensure data consistency.';
 
 -- Grant execute permission to authenticated users

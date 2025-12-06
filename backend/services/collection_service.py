@@ -639,12 +639,12 @@ class CollectionService:
 
                     # Check for specific error messages from PostgreSQL function
                     error_lower = error_text.lower()
-                    
+
                     if "collection not found" in error_lower:
                         raise CollectionNotFoundError(
                             f"Collection {collection_id} not found"
                         )
-                    
+
                     if "access denied" in error_lower:
                         raise CollectionAccessDeniedError(
                             f"Access denied to collection {collection_id}"

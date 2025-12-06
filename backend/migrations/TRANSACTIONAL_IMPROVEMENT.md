@@ -104,11 +104,13 @@ response = await client.post(f"{self.base_url}/rpc/record_care_action", ...)
 **Solution**: Implemented specific exception types and proper error codes:
 
 -   **Exception Types**:
+
     -   `CollectionNotFoundError`: Raised when collection doesn't exist (HTTP 404)
     -   `CollectionAccessDeniedError`: Raised when user doesn't own collection (HTTP 403)
     -   `CollectionServiceError`: Base exception for other service errors (HTTP 500)
 
 -   **PostgreSQL Function Updates**:
+
     -   Separate ownership check from existence check
     -   Distinct error codes: `P0002` (not found), `P0003` (access denied)
     -   Clear error messages for each case
