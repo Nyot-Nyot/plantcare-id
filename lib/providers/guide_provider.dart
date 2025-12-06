@@ -146,17 +146,6 @@ class CompletedStepsNotifier extends StateNotifier<Set<int>> {
     state = {};
   }
 
-  /// Get completion percentage (0.0 to 1.0)
-  double getCompletionPercentage(int totalSteps) {
-    if (totalSteps == 0) return 0.0;
-    return state.length / totalSteps;
-  }
-
-  /// Check if all steps are completed
-  bool isGuideCompleted(int totalSteps) {
-    return state.length >= totalSteps && totalSteps > 0;
-  }
-
   /// Set multiple steps as completed at once
   void setCompletedSteps(Set<int> steps) {
     state = {...steps};

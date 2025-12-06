@@ -3,28 +3,31 @@ import 'package:plantcare_id/models/treatment_guide.dart';
 
 void main() {
   group('GuideStep equality', () {
-    test('should be equal when all fields including materials are the same', () {
-      final step1 = GuideStep(
-        stepNumber: 1,
-        title: 'Test Step',
-        description: 'Description',
-        materials: ['Material 1', 'Material 2'],
-        isCritical: true,
-        estimatedTime: '10 minutes',
-      );
+    test(
+      'should be equal when all fields including materials are the same',
+      () {
+        final step1 = GuideStep(
+          stepNumber: 1,
+          title: 'Test Step',
+          description: 'Description',
+          materials: ['Material 1', 'Material 2'],
+          isCritical: true,
+          estimatedTime: '10 minutes',
+        );
 
-      final step2 = GuideStep(
-        stepNumber: 1,
-        title: 'Test Step',
-        description: 'Description',
-        materials: ['Material 1', 'Material 2'],
-        isCritical: true,
-        estimatedTime: '10 minutes',
-      );
+        final step2 = GuideStep(
+          stepNumber: 1,
+          title: 'Test Step',
+          description: 'Description',
+          materials: ['Material 1', 'Material 2'],
+          isCritical: true,
+          estimatedTime: '10 minutes',
+        );
 
-      expect(step1, equals(step2));
-      expect(step1.hashCode, equals(step2.hashCode));
-    });
+        expect(step1, equals(step2));
+        expect(step1.hashCode, equals(step2.hashCode));
+      },
+    );
 
     test('should NOT be equal when materials differ', () {
       final step1 = GuideStep(
@@ -92,7 +95,7 @@ void main() {
       );
 
       final steps = {step1, step2, step3};
-      
+
       // Should have 2 unique items (step1 and step2), step3 is duplicate of step1
       expect(steps.length, equals(2));
       expect(steps.contains(step1), isTrue);
@@ -102,38 +105,41 @@ void main() {
   });
 
   group('TreatmentGuide equality', () {
-    test('should be equal when all fields including steps and materials are the same', () {
-      final step = GuideStep(
-        stepNumber: 1,
-        title: 'Step 1',
-        description: 'Description',
-        materials: ['Material A'],
-        isCritical: true,
-      );
+    test(
+      'should be equal when all fields including steps and materials are the same',
+      () {
+        final step = GuideStep(
+          stepNumber: 1,
+          title: 'Step 1',
+          description: 'Description',
+          materials: ['Material A'],
+          isCritical: true,
+        );
 
-      final guide1 = TreatmentGuide(
-        id: '123',
-        plantId: 'plant-1',
-        diseaseName: 'Test Disease',
-        severity: 'medium',
-        guideType: 'treatment',
-        steps: [step],
-        materials: ['Tool 1', 'Tool 2'],
-      );
+        final guide1 = TreatmentGuide(
+          id: '123',
+          plantId: 'plant-1',
+          diseaseName: 'Test Disease',
+          severity: 'medium',
+          guideType: 'treatment',
+          steps: [step],
+          materials: ['Tool 1', 'Tool 2'],
+        );
 
-      final guide2 = TreatmentGuide(
-        id: '123',
-        plantId: 'plant-1',
-        diseaseName: 'Test Disease',
-        severity: 'medium',
-        guideType: 'treatment',
-        steps: [step],
-        materials: ['Tool 1', 'Tool 2'],
-      );
+        final guide2 = TreatmentGuide(
+          id: '123',
+          plantId: 'plant-1',
+          diseaseName: 'Test Disease',
+          severity: 'medium',
+          guideType: 'treatment',
+          steps: [step],
+          materials: ['Tool 1', 'Tool 2'],
+        );
 
-      expect(guide1, equals(guide2));
-      expect(guide1.hashCode, equals(guide2.hashCode));
-    });
+        expect(guide1, equals(guide2));
+        expect(guide1.hashCode, equals(guide2.hashCode));
+      },
+    );
 
     test('should NOT be equal when steps differ', () {
       final step1 = GuideStep(
