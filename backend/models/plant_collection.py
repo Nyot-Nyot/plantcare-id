@@ -76,6 +76,14 @@ class PlantCollectionCreate(PlantCollectionBase):
             raise ValueError("Field cannot be empty or whitespace")
         return v.strip()
 
+    @field_validator("scientific_name", "image_url", "notes")
+    @classmethod
+    def validate_not_empty_if_provided(cls, v: Optional[str]) -> Optional[str]:
+        """Ensure optional string fields are not just whitespace if provided."""
+        if v is not None and (not v or not v.strip()):
+            raise ValueError("Field cannot be empty or whitespace")
+        return v.strip() if v else None
+
 
 class PlantCollectionUpdate(BaseModel):
     """Model for updating an existing plant collection entry (partial updates)."""
@@ -106,7 +114,7 @@ class PlantCollectionUpdate(BaseModel):
         max_length=2000,
     )
 
-    @field_validator("common_name")
+    @field_validator("common_name", "scientific_name", "image_url", "notes")
     @classmethod
     def validate_not_empty_if_provided(cls, v: Optional[str]) -> Optional[str]:
         """Ensure string fields are not just whitespace if provided."""
